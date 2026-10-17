@@ -1,0 +1,25 @@
+<!doctype html><body style="margin:0;background:#888"><script type="importmap">{"imports":{"three":"/three/build/three.module.js","three/addons/":"/three/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
+import {prepareCar} from '/js/carmodel.js';
+import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
+const name=new URLSearchParams(location.search).get('m');
+const r=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});r.setSize(900,600);document.body.appendChild(r.domElement);
+const s=new THREE.Scene();s.background=new THREE.Color(0x999999);const pm=new THREE.PMREMGenerator(r);s.environment=pm.fromScene(new RoomEnvironment(),0.04).texture;
+s.add(new THREE.HemisphereLight(0xffffff,0x444444,2));const dl=new THREE.DirectionalLight(0xffffff,2);dl.position.set(3,5,4);s.add(dl);
+const l=new GLTFLoader();l.setMeshoptDecoder(MeshoptDecoder);
+l.load('/models/'+name+'.glb',g=>{
+  const res=prepareCar(g.scene,{front:new URLSearchParams(location.search).get('f')||'-z'});
+  s.add(res.root);
+  s.add(new THREE.GridHelper(10,20));
+  res.root.updateMatrixWorld(true);
+  const out={found:res.found,ok:res.ok,scale:res.scale,total:res.total&&res.total.toArray().map(x=>+x.toFixed(2)),wheels:res.wheels.map(w=>`${w.key} R=${w.radius.toFixed(3)} n=${w.n} c=${w.center.toArray().map(x=>x.toFixed(2))}`)};
+  const bb=new THREE.Box3().setFromObject(res.root);const c=bb.getCenter(new THREE.Vector3());out.finalSize=bb.getSize(new THREE.Vector3()).toArray().map(x=>+x.toFixed(2));
+  const cam=new THREE.PerspectiveCamera(35,1.5,0.1,100);
+  const imgs=[];
+  for(const v of [[1,0.45,-1],[-1,0.3,1],[1,0,0]]){cam.position.copy(c).add(new THREE.Vector3(...v).normalize().multiplyScalar(9));cam.lookAt(c);r.render(s,cam);imgs.push(r.domElement.toDataURL('image/jpeg',0.7));}
+  window.RESULT={out,imgs};
+},undefined,e=>{window.RESULT={err:String(e)}});
+</script>

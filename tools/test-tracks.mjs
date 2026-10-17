@@ -1,0 +1,48 @@
+// Headless check of every circuit: builds it, runs a short race, screenshots, reports page errors.
+import { chromium } from 'playwright';
+import { createStatic, attachGameServer } from '../server.js';
+const OUT = process.env.OUT || '/private/tmp/claude-501/-Users-ismoil-Desktop-game/16ac08e7-40e7-4ae9-9244-3fbcd521e23a/scratchpad/shots/';
+const only = process.argv[2] ? process.argv[2].split(',').map(Number) : null;
+const srv = createStatic(3223); attachGameServer(srv); await new Promise(r => srv.listen(3223, r));
+const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
+const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
+let errors = 0;
+p.on('console', m => { const t = m.text(); if (m.type() === 'error' || m.type() === 'warning') if (!/GL Driver|GPU stall|PCFSoft|swiftshader|WebGL/i.test(t)) { errors++; console.log('[console]', m.type(), t.slice(0, 300)); } });
+p.on('response', r => { if (r.status() >= 400) console.log('[http]', r.status(), r.url()); });
+p.on('pageerror', e => { errors++; console.log('[pageerror]', e.message, (e.stack || '').split('\n').slice(0, 4).join(' | ')); });
+await p.goto('http://localhost:3223/?manual');
+await p.waitForSelector('#menu.on', { timeout: 240000 });
+if (process.env.SCENE) await p.addStyleTag({ content: 'body > *:not(#c):not(script) { display: none !important; }' });
+const click = sel => p.evaluate(s => document.querySelector(s).click(), sel);
+const tick = (n, dt = 1 / 60, render = false) => p.evaluate(([n, dt, render]) => { for (let i = 0; i < n; i++) window.__game.tick(dt, render && i === n - 1); }, [n, dt, render]);
+await tick(3, 1 / 60, true);
+await p.screenshot({ path: OUT + 'menu.png' });
+await click('#btnTracks'); await tick(2, 1 / 60, true);
+await p.waitForTimeout(500);
+await p.screenshot({ path: OUT + 'picker.png' });
+await click('#tpClose');
+await click('#btnSolo'); await tick(10, 1 / 60, true);
+await click('#btnPick');
+await p.screenshot({ path: OUT + 'lobby.png' });
+for (let i = 0; i < 10; i++) {
+  if (only && !only.includes(i)) continue;
+  await click('#btnTrackOpen'); await p.waitForTimeout(150);
+  await click(`.tp-card[data-i="${i}"]`); await click('#tpConfirm');
+  console.log('starting track', i); const t0 = Date.now();
+  await p.evaluate(() => document.getElementById('btnStart').click());
+  await tick(60 * 4, 1 / 60, true);
+  const build = Date.now() - t0;
+  console.log('built', build); await p.screenshot({ path: OUT + `t${i}_grid.png`, timeout: 120000 });
+  await tick(60 * 3, 1 / 60, false);
+  await p.keyboard.down('KeyW');
+  await tick(60 * 6, 1 / 60, false); await p.keyboard.press('KeyE');
+  await tick(60 * 6, 1 / 60, true);
+  await p.screenshot({ path: OUT + `t${i}_race.png` });
+  const st = await p.evaluate(() => { const g = window.__game, v = g.race.me.v; return { name: g.race.track.def.id, spd: +(v.speed * 3.6).toFixed(0), phase: g.race.phase, d: +v.nearest.d.toFixed(1), rank: g.race.me.rank, tracks: g.race.trackIndex }; });
+  console.log(`track ${i}`, JSON.stringify(st), 'ms', build);
+  await p.keyboard.up('KeyW');
+  await p.keyboard.press('Escape'); await tick(2, 1 / 60, false);
+  await click('#btnQuit'); await tick(10, 1 / 60, true);
+}
+console.log(errors ? `ERRORS: ${errors}` : 'NO ERRORS');
+await b.close(); srv.close(); process.exit(errors ? 1 : 0);

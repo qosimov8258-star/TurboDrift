@@ -1,0 +1,13 @@
+import { chromium } from 'playwright';
+const D = '/private/tmp/claude-501/-Users-ismoil-Desktop-game/d6b86078-6f3f-4632-b4d0-25766dfeb358/scratchpad/';
+const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const p = await b.newPage({ viewport: { width: 800, height: 450 } });
+p.on('pageerror', e => console.log('[pageerror]', e.message));
+await p.goto('http://localhost:3000/?manual'); await p.waitForSelector('#menu.on', { timeout: 120000 });
+const tick = (n, r) => p.evaluate(([n, r]) => { for (let i = 0; i < n; i++) window.__game.tick(1 / 60, r && i === n - 1); }, [n, r]);
+await p.evaluate(() => { const q = s => document.querySelector(s); q('#btnSolo').click(); q('#btnPick').click(); q('#btnStart').click(); });
+await tick(60 * 6.3, false);
+await p.keyboard.down('KeyW'); await p.keyboard.down('KeyS');
+await tick(60 * 3.2, true); await p.screenshot({ path: D + 'b1.png' });
+await tick(60 * 3, true); await p.screenshot({ path: D + 'b2.png' });
+await b.close();

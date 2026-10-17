@@ -1,0 +1,14 @@
+import { chromium } from 'playwright';
+import { createStatic } from '../server.js';
+const D = '/private/tmp/claude-501/-Users-ismoil-Desktop-game/d6b86078-6f3f-4632-b4d0-25766dfeb358/scratchpad/';
+const srv = createStatic(3225); await new Promise(r => srv.listen(3225, r));
+const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const p = await b.newPage({ viewport: { width: 800, height: 450 } });
+p.on('pageerror', e => console.log('[pageerror]', e.message));
+await p.goto('http://localhost:3225/?manual'); await p.waitForSelector('#menu.on', { timeout: 120000 });
+const clk = s => p.evaluate(s => document.querySelector(s).click(), s);
+await clk('#btnSolo'); await p.evaluate(() => { document.getElementById('btnPick').click(); document.getElementById('btnStart').click(); });
+await p.evaluate(() => { const g = window.__game; for (let i = 0; i < 60 * 6.5; i++) g.tick(1 / 60, false);
+  const r = g.race, v = r.me.v, t = r.track; const i = 300; const pt = t.at(i, 11.5); v.place(pt.x, pt.z, t.heading(i)); for (let k = 0; k < 30; k++) g.tick(1 / 60, false); g.tick(1/60, true); });
+await p.screenshot({ path: D + 'v_gravel.png' });
+await b.close(); srv.close();

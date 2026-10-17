@@ -1,0 +1,30 @@
+// Online room: host switches to JANG, picks 3 abilities, starts; a guest joins and sees the same.
+import { chromium } from 'playwright';
+import { createStatic, attachGameServer } from '../server.js';
+const srv = createStatic(3225); attachGameServer(srv); await new Promise(r => srv.listen(3225, r));
+const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
+const mk = async name => {
+  const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
+  p.on('pageerror', e => console.log(`[${name} pageerror]`, e.message));
+  p.on('console', m => { if (m.type() === 'error') console.log(`[${name} console]`, m.text().slice(0, 200)); });
+  await p.goto('http://localhost:3225/?manual'); await p.waitForSelector('#menu.on', { timeout: 300000 });
+  return p;
+};
+const h = await mk('host'); const g = await mk('guest');
+const tick = (p, n) => p.evaluate(n => { for (let i = 0; i < n; i++) window.__game.tick(1 / 60, false); }, n);
+const st = p => p.evaluate(() => ({ game: window.__game.S.game, host: window.__game.S.hostId === window.__game.S.myId, lo: window.__game.S.loadout.length, start: { dis: document.getElementById('btnStart').disabled, txt: document.getElementById('btnStart').innerText }, lobbyBox: !document.getElementById('loadoutBox').classList.contains('hidden'), screen: document.body.dataset.screen }));
+await h.click('#btnFriends'); await h.click('#btnCreate'); await h.waitForSelector('#lobby.on'); await tick(h, 5);
+const code = await h.evaluate(() => window.__game.S.room); console.log('room', code);
+await g.click('#btnFriends'); await g.fill('#roomInput', code); await g.click('#btnJoin'); await g.waitForSelector('#lobby.on'); await tick(g, 5);
+await h.evaluate(() => { localStorage.removeItem('td_lo'); window.__game.S.loadout.length = 0; });
+await h.click('#modeSw button[data-m="battle"]'); await tick(h, 5); await tick(g, 5); await new Promise(r => setTimeout(r, 500)); await tick(h, 5); await tick(g, 5);
+console.log('host after JANG click', JSON.stringify(await st(h)));
+console.log('guest sees', JSON.stringify(await st(g)));
+for (const i of [0, 1, 3]) await h.click(`#loGrid .lo[data-i="${i}"]`);
+for (const i of [2, 4, 5]) await g.click(`#loGrid .lo[data-i="${i}"]`);
+console.log('host 3 picks', JSON.stringify(await st(h)));
+await h.click('#btnStart'); await new Promise(r => setTimeout(r, 1500)); await tick(h, 5); await tick(g, 5);
+console.log('host after start', JSON.stringify(await st(h)), 'guest', JSON.stringify(await st(g)));
+console.log('battle flag', await h.evaluate(() => window.__game.race.battle), await g.evaluate(() => window.__game.race.battle));
+await h.screenshot({ path: process.argv[2] + 'on_host.png' });
+await b.close(); process.exit(0);
