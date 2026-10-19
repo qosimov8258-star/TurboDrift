@@ -1,0 +1,28 @@
+import { chromium } from 'playwright';
+import { createStatic, attachGameServer } from '../server.js';
+const OUT = process.env.OUT || '/private/tmp/claude-501/-Users-ismoil-Desktop-game/60b90354-d033-477f-866c-49b2a7c6e66d/scratchpad/shots/';
+const PORT = 3550 + Math.floor(Math.random() * 40);
+const srv = createStatic(PORT); attachGameServer(srv); await new Promise(r => srv.listen(PORT, r));
+const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
+const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
+p.on('pageerror', e => console.log('[pageerror]', e.message, (e.stack || '').split('\n').slice(0, 4).join(' | ')));
+p.on('console', m => { if (m.type() === 'error') console.log('[err]', m.text().slice(0, 200)); });
+await p.goto(`http://localhost:${PORT}/?manual`);
+await p.waitForSelector('#menu.on', { timeout: 240000 });
+await p.evaluate(() => { const g = window.__game; g.S.m = { role: 'thief', police: 2, diff: 1, time: 600 }; g.startMission(); });
+await p.waitForFunction('window.__game.S.screen === "race"', null, { timeout: 300000 });
+const tick = (n, dt = 1 / 60, render = false) => p.evaluate(([n, dt, render]) => { for (let i = 0; i < n; i++) window.__game.tick(dt, render && i === n - 1); }, [n, dt, render]);
+await tick(60 * 4);
+await p.evaluate(() => {
+  const m = window.__game.mission, c = m.world.connectors[0], mid = Math.floor(c.pts.length / 2), q = c.pts[mid], q2 = c.pts[mid + 1], psi = Math.atan2(q2[0] - q[0], q2[1] - q[1]);
+  const fx = Math.sin(psi), fz = Math.cos(psi);
+  for (const u of m.units) if (u !== m.me) u.v.place(-30, -30, 0);
+  m.me.v.place(q[0], q[1], psi);
+  const spec = m.posts.layout(q[0] + fx * 11, q[1] + fz * 11, m.me.state); m.posts.add(spec);
+  m.hook = () => { const i = window.__game.race.input; i.throttle = 0; i.brake = 0; };
+});
+await tick(60 * 3);
+await tick(2, 1 / 60, true);
+await p.screenshot({ path: OUT + 'p_post.png', timeout: 240000 });
+console.log(JSON.stringify(await p.evaluate(() => { const m = window.__game.mission; return { hp: m.me.hp, posts: m.posts.list.length, robots: m.posts.list[0].robots.length, cars: m.posts.list[0].cars.length, obs: m.world.obs.length }; })));
+await b.close(); srv.close();

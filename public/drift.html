@@ -11,6 +11,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏎</text></svg>">
 <link rel="stylesheet" href="/style.css">
 <link rel="stylesheet" href="/ios.css">
+<link rel="stylesheet" href="/mission.css">
 <script type="importmap">
 { "imports": { "three": "/three/build/three.module.js", "three/addons/": "/three/examples/jsm/" } }
 </script>
@@ -35,9 +36,18 @@
     </label>
     <button id="btnSolo" class="btn primary"><svg class="ic lead"><use href="#i-play"/></svg><span class="lbl">YAKKA O'YIN <small>botlarga qarshi</small></span></button>
     <button id="btnFriends" class="btn"><svg class="ic lead"><use href="#i-users"/></svg><span class="lbl">DO'STLAR BILAN <small>onlayn xona</small></span></button>
+    <button id="btnMission" class="btn mission-btn"><svg class="ic lead"><use href="#i-siren"/></svg><span class="lbl">MISSIYA <small>politsiya · o'g'ri · 3 ta shahar</small></span></button>
     <button id="btnTracks" class="btn track-btn"><svg class="ic lead"><use href="#i-road"/></svg><span class="lbl">YO'LLAR <small id="menuTrackName">10 ta trassa · 5 yo'l + 5 aylana</small></span></button>
     <div id="friendsBox" class="friends hidden">
       <button id="btnFriendsBack" class="btn ghost small back"><svg class="ic "><use href="#i-chev-l"/></svg>Orqaga</button>
+      <div id="friendModes" class="fr-modes">
+        <div class="or">Do'stlar bilan nima o'ynaysiz?</div>
+        <button class="btn fr-mode" data-g="race" type="button"><svg class="ic lead"><use href="#i-flag"/></svg><span class="lbl">POYGA <small>aylanalar bo'yicha klassik poyga</small></span></button>
+        <button class="btn fr-mode" data-g="battle" type="button"><svg class="ic lead"><use href="#i-swords"/></svg><span class="lbl">JANG <small>to'qnashuv arenasi — oxirgi tirik qolgan g'olib</small></span></button>
+        <button class="btn fr-mode" data-g="mission" type="button"><svg class="ic lead"><use href="#i-siren"/></svg><span class="lbl">MISSIYA <small>Politsiya missiyasi · birga o'g'rini ushlang</small></span></button>
+      </div>
+      <div id="friendJoin" class="hidden">
+      <div id="frModeTag" class="fr-tag"></div>
       <button id="btnCreate" class="btn small"><svg class="ic "><use href="#i-plus"/></svg>Xona yaratish</button>
       <div class="or">yoki kod bilan kiring</div>
       <div class="row">
@@ -45,6 +55,7 @@
         <button id="btnJoin" class="btn small">Kirish</button>
       </div>
       <div id="menuErr" class="err"></div>
+      </div>
     </div>
     <div class="row two">
       <button id="btnHelp" class="btn ghost small"><svg class="ic "><use href="#i-keyboard"/></svg>Tugmalar</button>
@@ -76,6 +87,7 @@
   <div class="panel left">
     <h3>O'yinchilar <em id="plCount">1/7</em></h3>
     <ul id="plList"></ul>
+    <div id="msRoles" class="msRoles hidden"></div>
     <div id="lanInfo" class="lan hidden"></div>
     <div class="trackBox" id="trackBox">
       <h3>Trassa <em id="tbGroup">—</em></h3>
@@ -105,11 +117,18 @@
       <div class="modeSw" id="modeSw">
         <button data-m="race" class="on"><svg class="ic "><use href="#i-flag"/></svg>POYGA</button>
         <button data-m="battle"><svg class="ic "><use href="#i-swords"/></svg>JANG</button>
+        <button data-m="mission"><svg class="ic "><use href="#i-siren"/></svg>MISSIYA</button>
       </div>
       <p id="modeNote" class="modeNote"></p>
       <h3>Sozlamalar</h3>
       <div class="stepper" id="lapsRow"><span>Aylanalar</span><button data-k="laps" data-d="-1">−</button><b id="lapsVal">3</b><button data-k="laps" data-d="1">+</button></div>
-      <div class="stepper"><span>Botlar</span><button data-k="bots" data-d="-1">−</button><b id="botsVal">3</b><button data-k="bots" data-d="1">+</button></div>
+      <div id="msLobby" class="msLobby hidden">
+        <div class="stepper"><span>Politsiya soni</span><button data-k="mpol" data-d="-1">−</button><b id="mpolVal">4</b><button data-k="mpol" data-d="1">+</button></div>
+        <div class="stepper"><span>O'g'rilar soni</span><button data-k="mthief" data-d="-1">−</button><b id="mthiefVal">1</b><button data-k="mthief" data-d="1">+</button></div>
+        <div class="stepper"><span>Vaqt (daq)</span><button data-k="mtime" data-d="-1">−</button><b id="mtimeVal">5</b><button data-k="mtime" data-d="1">+</button></div>
+        <div class="stepper"><span>Qiyinlik</span><button data-k="mdiff" data-d="-1">−</button><b id="mdiffVal">O'rta</b><button data-k="mdiff" data-d="1">+</button></div>
+      </div>
+      <div class="stepper" id="botsRow"><span>Botlar</span><button data-k="bots" data-d="-1">−</button><b id="botsVal">3</b><button data-k="bots" data-d="1">+</button></div>
       <button id="btnStart" class="btn primary go"><svg class="ic "><use href="#i-flag"/></svg>POYGANI BOSHLASH</button>
     </div>
     <div id="guestMsg" class="guestMsg hidden"><svg class="ic "><use href="#i-clock"/></svg><span id="guestTxt">Xona egasi poygani boshlashini kuting…</span></div>
@@ -154,9 +173,90 @@
   </div>
 </div>
 
+<!-- ============ MISSIONS ============ -->
+<div id="missions" class="screen">
+  <div class="topbar">
+    <button id="msBack" class="btn ghost small"><svg class="ic "><use href="#i-chev-l"/></svg>Orqaga</button>
+    <div class="title">MISSIYALAR</div>
+    <div class="topTools"><button id="msHelp" class="btn small iconbtn" title="Tugmalar"><svg class="ic "><use href="#i-keyboard"/></svg></button></div>
+  </div>
+  <div class="ms-wrap">
+    <div class="ms-list">
+      <button class="ms-card on" data-m="police" type="button">
+        <div class="ms-art"><svg class="ic"><use href="#i-siren"/></svg><i></i><i></i></div>
+        <div class="ms-info"><em>YANGI</em><b>POLITSIYA MISSIYASI</b><small>3 ta shahar · quvish va qochish · ochiq dunyo</small></div>
+      </button>
+    </div>
+    <div class="ms-setup" id="msSetup">
+      <p class="ms-desc" id="msDesc"></p>
+      <div class="ms-field">
+        <label>Rolingiz</label>
+        <div class="ms-seg two" id="msRole">
+          <button data-r="police" type="button"><svg class="ic "><use href="#i-badge"/></svg>POLITSIYA</button>
+          <button data-r="thief" type="button"><svg class="ic "><use href="#i-mask"/></svg>O'G'RI</button>
+        </div>
+      </div>
+      <div class="ms-field">
+        <label><span id="msPolLbl">Politsiya xodimlari soni</span><em id="msPolVal">4</em></label>
+        <div class="ms-range"><button id="msPolMinus" type="button">−</button><input type="range" id="msPol" min="1" max="20" value="4"><button id="msPolPlus" type="button">+</button></div>
+        <div class="ms-chips" id="msPolChips"></div>
+        <div id="msThBox">
+          <label><span>O'g'rilar soni (kompyuter boshqaradi)</span><em id="msThVal">1</em></label>
+          <div class="ms-range"><button id="msThMinus" type="button">−</button><span class="ms-thnum" id="msThNum"></span><button id="msThPlus" type="button">+</button></div>
+        </div>
+      </div>
+      <div class="ms-two">
+        <div class="ms-field">
+          <label>Qiyinlik</label>
+          <div class="ms-seg" id="msDiff"><button data-d="0" type="button">Oson</button><button data-d="1" type="button">O'rta</button><button data-d="2" type="button">Qiyin</button></div>
+        </div>
+        <div class="ms-field">
+          <label>Vaqt <em id="msTimeVal"></em></label>
+          <div class="ms-time"><input type="number" id="msTimeMin" min="1" max="60" step="1" inputmode="numeric" value="5" aria-label="Daqiqa"><span>daqiqa</span></div>
+        </div>
+      </div>
+      <div class="ms-field">
+        <label>Mashinangiz</label>
+        <div class="ms-car"><button id="msCarPrev" type="button" aria-label="Oldingi"><svg class="ic "><use href="#i-chev-l"/></svg></button><b id="msCarName">—</b><button id="msCarNext" type="button" aria-label="Keyingi"><svg class="ic "><use href="#i-chev-r"/></svg></button></div>
+      </div>
+      <button id="msStart" class="btn primary go"><svg class="ic "><use href="#i-play"/></svg>MISSIYANI BOSHLASH</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MISSION RESULT ============ -->
+<div id="mres" class="screen">
+  <div class="card wide">
+    <div id="mresBody"></div>
+    <p id="mresNote" class="muted"></p>
+    <div class="row center wrap">
+      <button id="mresAgain" class="btn primary"><svg class="ic "><use href="#i-refresh"/></svg>Qayta urinish</button>
+      <button id="mresSetup" class="btn"><svg class="ic "><use href="#i-siren"/></svg>Missiya sozlamalari</button>
+      <button id="mresMenu" class="btn ghost"><svg class="ic "><use href="#i-power"/></svg>Menyu</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ HUD ============ -->
 <div id="hud">
   <div id="hudLabels"></div>
+  <!-- police mission HUD -->
+  <div id="mhud">
+    <div class="m-top">
+      <div class="m-timer" id="mTimerBox"><svg class="ic "><use href="#i-clock"/></svg><b id="mTimer">5:00</b></div>
+      <div class="m-obj"><b id="mObj">—</b><small id="mObjSub"></small></div>
+    </div>
+    <div class="m-side">
+      <div class="m-chip role" id="mRole"></div>
+      <div class="m-chip" id="mPoliceChip"><svg class="ic "><use href="#i-siren"/></svg><b id="mPolice">0</b><small>politsiya</small></div>
+      <div class="m-chip" id="mLootChip"><svg class="ic "><use href="#i-coin"/></svg><b id="mLoot">0/5</b><small>xalta</small></div>
+    </div>
+    <div class="m-bust" id="mBust"><div class="lbl"><span id="mBustLbl">USHLANISH XAVFI</span><b id="mBustPct">0%</b></div><div class="bar"><i id="mBustFill"></i></div></div>
+    <div id="mMarks"></div>
+    <div class="m-radar"><canvas id="mRadar" width="190" height="190"></canvas></div>
+  </div>
+
+
   <div class="hud-tl">
     <div class="posBig"><b id="hudPos">1</b><span id="hudPosTotal">/7</span></div>
     <div class="lapBox"><small id="hudAliveLbl">AYLANA</small><b id="hudLap">1/3</b><em id="hudTrack"></em></div>
@@ -195,8 +295,8 @@
   <div id="hudCount" class="count"></div>
   <div id="hudBanner" class="banner"></div>
   <div class="hud-keys" id="hudKeys">
-    <span><kbd>W</kbd><kbd>S</kbd> gaz / tormoz</span><span><kbd>A</kbd><kbd>D</kbd> rul</span><span><kbd>SPACE</kbd> drift / sakrash (jang)</span>
-    <span><kbd>SHIFT</kbd> nitro</span><span class="gearKeys"><kbd>E</kbd><kbd>Q</kbd> / <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> uzatma</span><span class="abKeys"><kbd>E</kbd><kbd>Q</kbd> uzatma</span><span class="abKeys"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> qobiliyatlar</span><span><kbd>C</kbd> kamera</span><span><kbd>T</kbd> tiklash</span><span><kbd>R</kbd> tros (Charger)</span><span><kbd>M</kbd> ovoz</span>
+    <span><kbd>W</kbd><kbd>S</kbd> gaz / tormoz</span><span><kbd>A</kbd><kbd>D</kbd> rul</span><span><kbd>SPACE</kbd> drift / sakrash (jang, missiya)</span>
+    <span><kbd>SHIFT</kbd> nitro</span><span class="gearKeys"><kbd>E</kbd><kbd>Q</kbd> / <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> uzatma</span><span class="abKeys"><kbd>E</kbd><kbd>Q</kbd> uzatma</span><span class="abKeys"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> qobiliyatlar</span><span><kbd>C</kbd> kamera</span><span><kbd>T</kbd> tiklash</span><span><kbd>R</kbd> tros</span><span class="msKeys"><kbd>F</kbd> o'q (politsiya)</span><span><kbd>M</kbd> ovoz</span>
   </div>
   <div class="hud-stats"><span id="hudFps"></span><span id="hudPing"></span></div>
 
@@ -257,15 +357,16 @@
       <div><kbd>W</kbd> / <kbd>↑</kbd></div><div>Gaz</div>
       <div><kbd>S</kbd> / <kbd>↓</kbd></div><div>Tormoz / orqaga yurish</div>
       <div><kbd>A</kbd> <kbd>D</kbd> / <kbd>←</kbd> <kbd>→</kbd></div><div>Rul (chap / o'ng)</div>
-      <div><kbd>SPACE</kbd></div><div>Qo'l tormozi — <b>drift</b> (tutun va iz qoldiradi)</div>
+      <div><kbd>SPACE</kbd></div><div>Qo'l tormozi — <b>drift</b> (tutun va iz qoldiradi). <b>JANG</b> va <b>MISSIYA</b> rejimlarida mashina <b>sakraydi</b> ham</div>
       <div><kbd>SHIFT</kbd></div><div><b>Nitro</b> — kuchli tezlanish (drift qilsangiz nitro tezroq to'ladi)</div>
       <div><kbd>E</kbd> / <kbd>Q</kbd></div><div>Uzatmani oshirish / kamaytirish (1 → 2 → 3)</div>
       <div><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></div><div>To'g'ridan-to'g'ri uzatma tanlash (<b>JANG</b> rejimida bu tugmalar qobiliyatlar uchun)</div>
       <div><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></div><div><b>JANG qobiliyatlari</b>: garajda 12 tadan 3 tasini tanlaysiz (pulemyot, raketa, mina, qalqon, ta'mir, turbo, yog', EMP, bomba, lazer, zirh, magnit) — jangda ular shu tugmalarda. Pastdagi panelni bosish ham mumkin</div>
       <div><kbd>X</kbd></div><div>Avto / qo'lda uzatma</div>
       <div><kbd>C</kbd></div><div>Kamera: orqadan / uzoqdan / bamper</div>
-      <div><kbd>R</kbd></div><div><b>Dodge Charger</b>: orqadagi mashinaga tros otish (20 m) va sudrab yurish; qayta bosilsa bo'shatiladi</div>
-      <div><kbd>T</kbd></div><div>Mashinani yo'lga qaytarish</div>
+      <div><kbd>R</kbd></div><div><b>Dodge Charger</b>: orqadagi mashinaga tros otish (20 m) va sudrab yurish; qayta bosilsa bo'shatiladi. <b>MISSIYA</b>da har qanday mashina eng yaqin mashinaga (28 m) tros otadi</div>
+      <div><kbd>F</kbd></div><div><b>MISSIYA</b>: politsiya o'g'rini o'qqa tutadi (avto nishon)</div>
+      <div><kbd>T</kbd></div><div>Mashinani yo'lga qaytarish (<b>MISSIYA</b>da: o'g'ri <b>bomba tashlaydi</b> — politsiya yaqinlashsa portlaydi; mashinani qaytarish <kbd>Y</kbd>)</div>
       <div><kbd>M</kbd></div><div>Ovozni o'chirish / yoqish</div>
       <div><kbd>ESC</kbd></div><div>Pauza</div>
     </div>

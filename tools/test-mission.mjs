@@ -1,0 +1,38 @@
+// Headless check of the Police mission: menu -> mission setup -> start -> drive / chase -> screenshots + page errors.
+import { chromium } from 'playwright';
+import { createStatic, attachGameServer } from '../server.js';
+const OUT = process.env.OUT || '/private/tmp/claude-501/-Users-ismoil-Desktop-game/60b90354-d033-477f-866c-49b2a7c6e66d/scratchpad/shots/';
+const ROLE = process.env.ROLE || 'police', POLICE = +(process.env.POLICE || 4);
+const srv = createStatic(3241); attachGameServer(srv); await new Promise(r => srv.listen(3241, r));
+const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
+const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
+let errors = 0;
+p.on('console', m => { const t = m.text(); if (t.startsWith('[dbg]')) console.log(t.slice(0, 200)); if (m.type() === 'error' || m.type() === 'warning') if (!/GL Driver|GPU stall|PCFSoft|swiftshader|WebGL/i.test(t)) { errors++; console.log('[console]', m.type(), t.slice(0, 400)); } });
+p.on('response', r => { if (r.status() >= 400) console.log('[http]', r.status(), r.url()); });
+p.on('pageerror', e => { errors++; console.log('[pageerror]', e.message, (e.stack || '').split('\n').slice(0, 5).join(' | ')); });
+await p.goto('http://localhost:3241/?manual&debug');
+await p.waitForSelector('#menu.on', { timeout: 240000 });
+const click = sel => p.evaluate(s => document.querySelector(s).click(), sel);
+const tick = (n, dt = 1 / 60, render = false) => p.evaluate(([n, dt, render]) => { for (let i = 0; i < n; i++) window.__game.tick(dt, render && i === n - 1); }, [n, dt, render]);
+await tick(3, 1 / 60, true);
+await p.screenshot({ path: OUT + 'm_menu.png' });
+await click('#btnMission'); await tick(3, 1 / 60, true);
+await p.screenshot({ path: OUT + 'm_setup.png' });
+await p.evaluate(([role, n]) => { document.querySelector(`#msRole button[data-r="${role}"]`).click(); document.querySelector(`#msPolChips button[data-n="${n}"]`)?.click(); }, [ROLE, POLICE]);
+await tick(2, 1 / 60, true); await p.screenshot({ path: OUT + 'm_setup_' + ROLE + '.png' });
+const t0 = Date.now();
+await click('#msStart');
+console.log('clicked start');
+for (let i = 0; i < 300; i++) { const st = await p.evaluate(() => [window.__game.S.screen, document.getElementById('loadText').textContent, document.getElementById('loadFill').style.width]); if (i % 5 === 0) console.log('..', JSON.stringify(st)); if (st[0] === 'race') break; await new Promise(r => setTimeout(r, 1000)); }
+console.log('mission loaded in', Date.now() - t0, 'ms');
+await tick(30, 1 / 60, true);
+await p.screenshot({ path: OUT + 'm_start_' + ROLE + '.png' });
+console.log(JSON.stringify(await p.evaluate(() => { const m = window.__game.mission; return { units: m.units.map(u => [u.id, Math.round(u.state.x), Math.round(u.state.z)]), me: [m.me.state.x | 0, m.me.state.z | 0], loot: (m.loot || []).map(l => [l.x | 0, l.z | 0]), phase: window.__game.race.phase }; })));
+await tick(60 * 4, 1 / 60, false);
+await p.keyboard.down('KeyW');
+await tick(60 * 8, 1 / 60, true);
+await p.screenshot({ path: OUT + 'm_drive_' + ROLE + '.png' });
+await p.keyboard.up('KeyW');
+console.log(JSON.stringify(await p.evaluate(() => { const m = window.__game.mission; return { state: m.state, t: Math.round(m.t), bust: m.bust, me: [m.me.state.x | 0, m.me.state.z | 0, Math.round(m.me.state.speed * 3.6)], hp: Math.round(m.me.hp), units: m.units.map(u => [u.id, Math.round(u.state.x), Math.round(u.state.z), Math.round(u.state.speed * 3.6), Math.round(u.hp)]) }; })));
+console.log('errors', errors);
+await b.close(); srv.close();

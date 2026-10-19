@@ -1,0 +1,15 @@
+<!doctype html><script type="importmap">{"imports":{"three":"/three/build/three.module.js","three/addons/":"/three/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
+const l=new GLTFLoader();l.setMeshoptDecoder(MeshoptDecoder);
+const name=new URLSearchParams(location.search).get('m');
+l.load('/models/'+name+'.glb',g=>{
+  g.scene.updateMatrixWorld(true);
+  const out=[];const f=a=>a.map(v=>+v.toFixed(3));
+  g.scene.traverse(o=>{const b=new THREE.Box3().setFromObject(o);const c=b.getCenter(new THREE.Vector3()),s=b.getSize(new THREE.Vector3());out.push([o.name,o.type,f(c.toArray()),f(s.toArray()),o.children.length]);});
+  const bb=new THREE.Box3().setFromObject(g.scene);
+  window.RESULT={out,box:[f(bb.min.toArray()),f(bb.max.toArray())],anims:g.animations.map(a=>a.name+':'+a.duration.toFixed(2)+':'+a.tracks.length)};
+});
+</script>

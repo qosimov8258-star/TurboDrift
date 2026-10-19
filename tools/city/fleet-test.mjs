@@ -1,0 +1,12 @@
+import { chromium } from 'playwright';
+import { createStatic } from '../../server.js';
+import fs from 'fs';
+const OUT = '/private/tmp/claude-501/-Users-ismoil-Desktop-game/60b90354-d033-477f-866c-49b2a7c6e66d/scratchpad/shots/';
+const srv = createStatic(3503); await new Promise(r => srv.listen(3503, r));
+const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] }); const p = await b.newPage();
+p.on('pageerror', e => console.log('[pageerror]', e.message)); p.on('console', m => { if (m.type() === 'error') console.log('[err]', m.text().slice(0, 200)); });
+await p.goto('http://localhost:3503/tools/city/fleet-test.html');
+await p.waitForFunction('window.RESULT', null, { timeout: 90000 });
+const R = await p.evaluate('window.RESULT'); console.log(JSON.stringify({ ...R, imgs: undefined }));
+R.imgs.forEach((d, i) => fs.writeFileSync(OUT + 'fleet_' + i + '.jpg', Buffer.from(d.split(',')[1], 'base64')));
+await b.close(); srv.close();

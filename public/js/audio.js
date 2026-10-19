@@ -239,9 +239,27 @@ GameAudio.prototype.garageIdle = function (on) {
   this.stopG.gain.setTargetAtTime(on ? 0.5 : 0, this.ctx.currentTime, on ? 0.15 : 0.08);
 };
 
+/** police siren (synthesised wail + yelp): vol 0..1 from the nearest police car, pan -1..1, rate 1 = wail, 2 = fast yelp */
+GameAudio.prototype.setSiren = function (vol, pan = 0, rate = 1) {
+  const c = this.ctx; if (!c) return;
+  if (!this.sir) {
+    const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 880;
+    const lfo = c.createOscillator(); lfo.type = 'triangle'; lfo.frequency.value = 0.6;
+    const lg = c.createGain(); lg.gain.value = 360; lfo.connect(lg).connect(o.frequency);
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2300; lp.Q.value = 0.7;
+    const bp = c.createBiquadFilter(); bp.type = 'peaking'; bp.frequency.value = 1100; bp.gain.value = 6; bp.Q.value = 0.8;
+    const g = c.createGain(); g.gain.value = 0; const p = c.createStereoPanner();
+    o.connect(lp).connect(bp).connect(g).connect(p).connect(this.master); o.start(); lfo.start();
+    this.sir = { o, lfo, g, p };
+  }
+  const t = c.currentTime, s = this.sir;
+  s.g.gain.setTargetAtTime(this.muted ? 0 : vol * 0.13, t, 0.1); s.p.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan)), t, 0.1); s.lfo.frequency.setTargetAtTime(0.6 * rate, t, 0.25);
+};
+
 GameAudio.prototype.silence = function () {
   if (!this.ctx) return;
   const t = this.ctx.currentTime;
+  if (this.sir) this.sir.g.gain.setTargetAtTime(0, t, 0.05);
   for (const g of [this.engine.vol, this.roadG, this.sqG, this.wG, this.gG, this.nG, this.tG]) g.gain.setTargetAtTime(0, t, 0.05);
   this.clearRemotes();
 };

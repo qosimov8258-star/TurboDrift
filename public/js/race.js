@@ -80,6 +80,7 @@ export class Race {
     this.t = 0; this.acc = 0; this.camMode = 0;
     this.camPos = new THREE.Vector3(); this.camAng = 0; this.shake = 0; this._shk = new THREE.Vector3();
     this.sendT = 0; this.me = null; this.net = null;
+    this.mission = null; this.world = null; this.hitFlash = 0; this.dmgSum = 0; this.dmgAt = -9;
     this.input = { throttle: 0, brake: 0, steer: 0, handbrake: false, nitro: false };
     this.driftScore = 0; this.driftBank = 0; this.driftTimer = 0; this.driftMult = 1;
     this.msg = () => {};
@@ -96,16 +97,34 @@ export class Race {
     this.track = new Track(TRACKS[idx]);
     this.trackIndex = idx;
     this.trackRoot = this.track.build(this.scene, { quality: this.quality });
-    const th = this.track.theme;
+    this.applyTheme(this.track.theme);
+    this.hud.resetMini?.();
+    this.track.setLights(0);
+    this.camera.far = 6000;
+    return true;
+  }
+
+  /** sky / fog / sun colours of a theme (see THEMES in trackdata.js) */
+  applyTheme(th) {
     this.scene.background = new THREE.Color(th.fog);
     this.scene.fog = new THREE.Fog(th.fog, th.fogNear, th.fogFar);
     this.hemi.color.set(th.hemi[0]); this.hemi.groundColor.set(th.hemi[1]); this.hemi.intensity = th.hemi[2];
     this.sun.color.set(th.sunColor); this.sun.intensity = th.sunI;
     this.sky.setTheme(th);
-    this.hud.resetMini?.();
-    this.track.setLights(0);
-    this.camera.far = 6000;
-    return true;
+  }
+
+  /** Police mission: swap the circuit for the free-roam city world */
+  enterWorld(world, theme) {
+    if (this.world === world) return;
+    if (this.trackRoot) this.scene.remove(this.trackRoot);
+    this.world = world; this.scene.add(world.root);
+    this.applyTheme(theme); this.camera.far = 6000;
+  }
+  exitWorld() {
+    if (!this.world) return;
+    this.scene.remove(this.world.root); this.world = null;
+    if (this.trackRoot) { this.scene.add(this.trackRoot); this.applyTheme(this.track.theme); this.hud.resetMini?.(); }
+    this.skids.last.clear();
   }
 
   setQuality(q) {
@@ -119,6 +138,8 @@ export class Race {
 
   // ------------------------------------------------------------------ setup
   setup({ players, laps, myId, isHost, net, countdown = 6, solo = false, track = 0, mode = 'race', loadout = null }) {
+    if (this.mission) this.mission.stop();
+    this.exitWorld();
     this.battle = mode === 'battle';
     this.setTrack(track);
     for (const r of this.racers.values()) { this.scene.remove(r.vis.group); this.hud.removeLabel(r.id); this.audio.removeRemote(r.id); }
@@ -295,6 +316,7 @@ export class Race {
 
   // ------------------------------------------------------------------ helpers
   respawn() {
+    if (this.mission) { this.mission.respawn(); return; }
     const m = this.me; if (!m || !m.v || m.dead) return;
     const i = m.v.nearest.i < 0 ? 0 : m.v.nearest.i;
     const p = this.track.at(i, 0);
@@ -363,6 +385,7 @@ export class Race {
   // ------------------------------------------------------------------ main update
   update(dt, w, h) {
     if (this.phase === 'idle') return;
+    if (this.mission) { this.mission.update(dt, w, h); return; }
     dt = Math.min(dt, 0.1);
     this.t += dt;
 
@@ -551,7 +574,7 @@ export class Race {
       s.vx = n.vx; s.vz = n.vz; s.steer = n.steer; s.gear = n.gear;
       s.rpm += (n.rpm - s.rpm) * (1 - Math.exp(-dt * 10)); s.thr = n.thr; s.nitro = n.nitro; s.drift = n.drift;
       s.speed = Math.hypot(n.vx, n.vz);
-      if (this.battle && n.hp != null) { r.hp = n.hp; s.hp = n.hp; if (n.hp <= 0 && !r.dead) this.kill(r, true); }
+      if ((this.battle || this.mission) && n.hp != null) { r.hp = n.hp; s.hp = n.hp; if (this.battle && n.hp <= 0 && !r.dead) this.kill(r, true); }
     }
   }
 
@@ -630,7 +653,7 @@ export class Race {
         const maxSteer = 0.72 + (0.26 - 0.72) * Math.pow(clamp(Math.abs(vf) / 62, 0, 1), 0.6);
         steerAngle = -s.steer * maxSteer; spin = vf / TUNE.wheelR;
         latG = -(vf * (s.steer)) * 0.0; accG = 0;
-        r.vis.update(dt, { x: s.x, z: s.z, psi: s.psi, steerAngle, wheelSpin: spin, latG: s.drift * (s.steer > 0 ? 9 : -9), accG: 0, handbrake: false, speed: Math.hypot(s.vx, s.vz), rpm: s.rpm, burn: Math.hypot(s.vx, s.vz) < 2.5 && s.thr > 0.5 && s.rpm > 0.85 });
+        r.vis.update(dt, { x: s.x, z: s.z, psi: s.psi, steerAngle, wheelSpin: spin, latG: s.drift * (s.steer > 0 ? 9 : -9), accG: 0, handbrake: false, speed: Math.hypot(s.vx, s.vz), rpm: s.rpm, burn: Math.hypot(s.vx, s.vz) < 2.5 && s.thr > 0.5 && s.rpm > 0.85, jy: this.mission && r.net ? (r.net.prog || 0) : 0 });
       }
     }
   }
@@ -735,14 +758,15 @@ export class Race {
         this.burnPopPos = pos;
       }
       // wall / car impacts -> sparks
-      const hitPow = v ? Math.max(v.hitEvent || 0, this.battle ? (v.carHit || 0) : 0) : 0;
+      const dmgFx = this.battle || !!this.mission;
+      const hitPow = v ? Math.max(v.hitEvent || 0, dmgFx ? (v.carHit || 0) : 0) : 0;
       if (v && hitPow > 2) {
         const n = Math.min(40, hitPow * 2.2 | 0);
         for (let q = 0; q < n; q++) this.sparks.emit(s.x + (Math.random() - 0.5) * 2, 0.4 + Math.random() * 0.6, s.z + (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 12, 2 + Math.random() * 5, (Math.random() - 0.5) * 12, 0.5 + Math.random() * 0.5, 0.35, 0.1, 1, 1, 0.75, 0.3);
       }
-      if (this.battle && v && r.kind !== 'me' && (v.carHit || 0) > 4 && dist < 55) this.audio.thump(Math.min(1.2, v.carHit / 30) * (1 - dist / 55));
+      if (dmgFx && v && r.kind !== 'me' && (v.carHit || 0) > 4 && dist < 55) this.audio.thump(Math.min(1.2, v.carHit / 30) * (1 - dist / 55));
       // damaged cars smoke, badly damaged ones burn; wrecks burn out
-      if (this.battle && (r.dead || r.hp < 55)) {
+      if (dmgFx && (r.dead || r.hp < 55)) {
         const sev = r.dead ? 1 : clamp((55 - r.hp) / 55, 0, 1);
         const sr = (5 + 38 * sev) * dt, fr = r.dead ? 40 * dt : r.hp < 22 ? (8 + 30 * (1 - r.hp / 22)) * dt : 0;
         const g = r.dead ? 0.05 : 0.5 - 0.42 * sev;
@@ -847,6 +871,7 @@ export class Race {
       const want = new THREE.Vector3(v.x - ax * dist, height, v.z - az * dist);
       this.camPos.lerp(want, 1 - Math.exp(-dt * 38));
       cam.position.copy(this.camPos);
+      if (this.world) this.world.pushCamera(cam, v.x, v.z);                  // never look through a building
       cam.lookAt(v.x + Math.sin(v.psi) * 4.5, 1.15 + (mode === 1 ? 0.6 : 0), v.z + Math.cos(v.psi) * 4.5);
     }
     // shake

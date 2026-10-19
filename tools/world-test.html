@@ -1,0 +1,25 @@
+<!doctype html><body style="margin:0;background:#222"><script type="importmap">{"imports":{"three":"/three/build/three.module.js","three/addons/":"/three/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { World, Nav } from '/js/world.js';
+import { makeSky } from '/js/track.js';
+import { THEME } from '/js/trackdata.js';
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); r.setSize(1280, 720); document.body.appendChild(r.domElement);
+r.toneMapping = THREE.ACESFilmicToneMapping; r.shadowMap.enabled = false;
+const scene = new THREE.Scene(); const th = THEME('city');
+scene.background = new THREE.Color(th.fog); scene.fog = new THREE.Fog(th.fog, th.fogNear, th.fogFar);
+scene.add(new THREE.HemisphereLight(th.hemi[0], th.hemi[1], th.hemi[2]));
+const sun = new THREE.DirectionalLight(th.sunColor, th.sunI); sun.position.set(...th.sun.map(v => v * 100)); scene.add(sun);
+const sky = makeSky(r, scene); sky.setTheme(th);
+const t0 = performance.now();
+const world = await World.load(r, p => {});
+scene.add(world.root);
+const loadMs = performance.now() - t0;
+const nav = new Nav(world);
+const f = nav.field(); const a = nav.snap(250, 250); const t1 = performance.now(); f.start([a]); f.runAll(); const dMs = performance.now() - t1;
+let reach = 0, maxd = 0; for (let i = 0; i < f.dist.length; i++) if (isFinite(f.dist[i])) { reach++; maxd = Math.max(maxd, f.dist[i]); }
+let open = 0; for (let i = 0; i < nav.open.length; i++) open += nav.open[i];
+const cityReach = world.cities.map(c => { const k = nav.snap((c.x0 + c.x1) / 2, (c.z0 + c.z1) / 2); return [c.id, isFinite(f.dist[k]) ? Math.round(f.dist[k]) : null]; });
+window.api = { THREE, scene, r, world, nav, sky, th, sun };
+window.RESULT = { loadMs, navCells: nav.gw * nav.gh, open, reach, maxd: Math.round(maxd), dijkstraMs: Math.round(dMs), cityReach, barriers: world.barrierCount };
+</script>

@@ -136,9 +136,9 @@ export class Vehicle {
 
     // ---- steering (speed sensitive, smoothed)
     const target = this.locked ? 0 : inp.steer;
-    const rate = Math.abs(target) > Math.abs(this.steer) ? 12 : 16;
+    const rate = Math.abs(target) > Math.abs(this.steer) ? 20 : 26;          // snappy wheel: full lock in ~0.05 s
     this.steer += clamp(target - this.steer, -rate * dt, rate * dt);
-    let maxSteer = lerp(0.72, 0.26, Math.pow(clamp(Math.abs(vf) / 62, 0, 1), 0.6));
+    let maxSteer = lerp(0.74, 0.31, Math.pow(clamp(Math.abs(vf) / 62, 0, 1), 0.6));
     if (this.reversing) maxSteer = Math.min(maxSteer, 0.46);          // reverse: gentler lock, like a real car backing up
     this.steerAngle = -this.steer * maxSteer;      // + = left
 
@@ -231,15 +231,21 @@ export class Vehicle {
     this.latG = burn ? 0 : grip * vl;
 
     // ---- yaw
-    let yawT = (vf / T.wheelBase) * Math.tan(this.steerAngle) * (1 + 0.38 * this.drift);
-    const ymax = (T.latAccelMax * (this.drift > 0.4 ? 1.35 : 1)) / Math.max(Math.abs(vf), 6);
+    // low-speed assist: at a standstill / crawling the car still swings its nose quickly (as if rolling at 7 m/s with gas, 3.5 m/s without)
+    let vEff = vf;
+    if (!this.locked && !burn) {
+      const floor = thr > 0.05 ? 7 : Math.abs(inp.steer) > 0.2 ? 3.5 : 0;
+      if (Math.abs(vf) < floor) vEff = (this.reversing ? -1 : 1) * floor;
+    }
+    let yawT = (vEff / T.wheelBase) * Math.tan(this.steerAngle) * (1 + 0.38 * this.drift);
+    const ymax = (T.latAccelMax * 1.12 * (this.drift > 0.4 ? 1.35 : 1)) / Math.max(Math.abs(vf), 6);
     yawT = clamp(yawT, -ymax, ymax * 1);
     if (this.handbrake && !this.locked) yawT *= 1.1;
-    yawT = clamp(yawT, -1.25, 1.25);
+    yawT = clamp(yawT, -1.55, 1.55);
     if (this.reversing) yawT = clamp(yawT, -0.8, 0.8);
-    if (Math.abs(vf) < 0.6) yawT = 0;
+    if (Math.abs(vEff) < 0.6) yawT = 0;
     if (burn) yawT = -this.steer * 2.0;
-    this.yaw += (yawT - this.yaw) * Math.min(1, dt * (this.drift > 0.4 ? 8 : 15));
+    this.yaw += (yawT - this.yaw) * Math.min(1, dt * (this.drift > 0.4 ? 8 : 24));
 
     // ---- rebuild world velocity with the *old* heading, then rotate (inertia keeps the slide)
     this.vx = vf * fx + vl * lx;
@@ -283,6 +289,7 @@ export class Vehicle {
   }
 
   wallHit(track, dt) {
+    if (track.isWorld) { track.collide(this, dt); return; }          // free-roam city: walls come from a signed-distance field
     const nr = this.nearest;
     track.nearest(this.x, this.z, nr.i, nr);
     const lim = WALL_D - 1.0;
@@ -348,6 +355,15 @@ export class Vehicle {
 }
 
 // ---------------------------------------------------------------- visual
+const SIREN_BOX = new Map();
+let GLOW = null;
+function glowTex() {
+  if (GLOW) return GLOW;
+  const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
+  const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32); grd.addColorStop(0, 'rgba(255,255,255,1)'); grd.addColorStop(0.25, 'rgba(255,255,255,0.55)'); grd.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grd; g.fillRect(0, 0, 64, 64);
+  GLOW = new THREE.CanvasTexture(c); return GLOW;
+}
 export class CarVisual {
   constructor(proto, def, paint = -1) {
     this.def = def;
@@ -400,6 +416,31 @@ export class CarVisual {
       g.add(a, b); this.proxy = g; this.group.add(g);
     } else if (this.proxy) { this.group.remove(this.proxy); this.proxy = null; }
   }
+
+  /** police roof light bar (red / blue) with additive glows; flashed by updateSiren() */
+  addSiren() {
+    if (this.siren) return;
+    let box = SIREN_BOX.get(this.def.id);
+    if (!box) { this.root.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(this.root); box = { top: bb.max.y, zc: (bb.min.z + bb.max.z) / 2 }; SIREN_BOX.set(this.def.id, box); }
+    const g = new THREE.Group(); g.position.set(0, box.top + 0.02, box.zc - 0.05);
+    const base = new THREE.Mesh(new THREE.BoxGeometry(1.08, 0.07, 0.3), new THREE.MeshStandardMaterial({ color: 0x0b0c10, roughness: 0.5, metalness: 0.4 }));
+    const mk = (x, col) => {
+      const m = new THREE.MeshBasicMaterial({ color: col }), lens = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.11, 0.26), m); lens.position.set(x, 0.08, 0);
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: col, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 })); sp.position.set(x, 0.16, 0); sp.scale.setScalar(2.6);
+      g.add(lens, sp); return { m, sp, col: new THREE.Color(col) };
+    };
+    const red = mk(-0.27, 0xff1a1a), blue = mk(0.27, 0x1f5bff);
+    g.add(base); this.group.add(g); this.siren = { g, red, blue, top: box.top, zc: box.zc };
+  }
+  /** t = clock (s). Alternating double flashes. */
+  updateSiren(t, on = true) {
+    const s = this.siren; if (!s) return;
+    const ph = (t * 6.5 + (this.sirenOff || 0)) % 4, r = on && (ph < 0.9 || (ph >= 1.2 && ph < 2.1)) ? 1 : 0, b = on && ((ph >= 2.0 && ph < 2.9) || (ph >= 3.2 && ph < 4.0)) ? 1 : 0;
+    for (const [l, v] of [[s.red, r], [s.blue, b]]) { l.m.color.copy(l.col).multiplyScalar(v ? 1.6 : 0.12); l.sp.material.opacity = v ? 0.95 : 0; }
+    s.r = r; s.b = b;
+  }
+  /** world position of the light bar (for the shared point lights) */
+  sirenPos(out) { const s = this.siren; return s ? this.group.localToWorld(out.set(0, s.top + 0.2, s.zc)) : out.set(this.group.position.x, 1.5, this.group.position.z); }
 
   /** body colour: index into PAINTS, or -1 for the factory colours */
   setPaint(idx) {

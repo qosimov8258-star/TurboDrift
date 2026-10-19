@@ -4,9 +4,10 @@ import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
+import { createHorrorServer } from './horror-server.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.glb': 'model/gltf-binary', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.wasm': 'application/wasm', '.ico': 'image/x-icon' };
+const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.glb': 'model/gltf-binary', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.wasm': 'application/wasm', '.ico': 'image/x-icon', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.wav': 'audio/wav', '.mp4': 'video/mp4', '.ogg': 'audio/ogg', '.webp': 'image/webp' };
 
 export function lanUrls(port) {
   const out = [];
@@ -16,22 +17,52 @@ export function lanUrls(port) {
 
 export function createStatic(port = 3000) {
   return http.createServer((req, res) => {
-    let url = decodeURIComponent(req.url.split('?')[0]);
+    let url; try { url = decodeURIComponent(req.url.split('?')[0]); } catch { res.writeHead(400); return res.end(); }
     if (url === '/info') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ urls: lanUrls(port) }));
     }
-    if (url === '/') url = '/index.html';
+    if (url === '/horror-list') {       // horror/music/uchratsa ichidagi baqiriq ovozlari ro'yxati
+      let files = []; try { files = fs.readdirSync(path.join(__dirname, 'horror/music/uchratsa')).filter(f => /\.(mp3|wav|m4a|ogg)$/i.test(f)); } catch {}
+      res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify(files));
+    }
+    if (url === '/') url = req.url.includes('?') ? '/drift.html' : '/portal.html';      // /?room=ABCD, /?manual... eski havolalar Turbo Drift'ga olib boradi
+    else if (url === '/drift') url = '/drift.html';
+    else if (url === '/horror' || url === '/horror/') url = '/horror/index.html';
     let file;
     if (url.startsWith('/three/')) file = path.join(__dirname, 'node_modules/three', url.slice(7));
     else if (url.startsWith('/saund/')) file = path.join(__dirname, url);
     else if (url.startsWith('/tools/')) file = path.join(__dirname, url);
+    else if (url.startsWith('/horror-files/')) file = path.join(__dirname, 'horror', url.slice(14));
     else file = path.join(__dirname, 'public', url);
-    if (!file.startsWith(__dirname)) { res.writeHead(403); return res.end(); }
-    fs.readFile(file, (err, data) => {
-      if (err) { res.writeHead(404); return res.end('404'); }
-      res.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'application/octet-stream', 'Cache-Control': url.endsWith('.glb') ? 'public, max-age=3600' : 'no-cache' });
-      res.end(data);
+    file = path.normalize(file);
+    if (!file.startsWith(__dirname + path.sep)) { res.writeHead(403); return res.end(); }
+    fs.stat(file, (err, st) => {
+      if (err || !st.isFile()) { res.writeHead(404); return res.end('404'); }
+      const type = types[path.extname(file)] || 'application/octet-stream';
+      const cache = /\.(glb|sdf|mp3|m4a)$/.test(url) ? 'public, max-age=3600' : 'no-cache';
+      // Range qo'llab-quvvatlash: Safari audio uchun majburiy, katta mp3 lar uchun foydali
+      const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+      if (range && (range[1] || range[2])) {
+        let a = range[1] === '' ? Math.max(0, st.size - +range[2]) : +range[1];
+        let b = range[1] === '' || range[2] === '' ? st.size - 1 : Math.min(+range[2], st.size - 1);
+        if (a > b || a >= st.size) { res.writeHead(416, { 'Content-Range': `bytes */${st.size}` }); return res.end(); }
+        res.writeHead(206, { 'Content-Type': type, 'Cache-Control': cache, 'Accept-Ranges': 'bytes', 'Content-Range': `bytes ${a}-${b}/${st.size}`, 'Content-Length': b - a + 1 });
+        const rs = fs.createReadStream(file, { start: a, end: b });
+        rs.on('error', () => res.destroy()); res.on('close', () => rs.destroy());
+        return rs.pipe(res);
+      }
+      if (st.size > 4e6) {      // katta fayllar oqim bilan
+        res.writeHead(200, { 'Content-Type': type, 'Cache-Control': cache, 'Accept-Ranges': 'bytes', 'Content-Length': st.size });
+        const rs = fs.createReadStream(file);
+        rs.on('error', () => res.destroy()); res.on('close', () => rs.destroy());
+        return rs.pipe(res);
+      }
+      fs.readFile(file, (e2, data) => {
+        if (e2) { res.writeHead(404); return res.end('404'); }
+        res.writeHead(200, { 'Content-Type': type, 'Cache-Control': cache, 'Accept-Ranges': 'bytes' });
+        res.end(data);
+      });
     });
   });
 }
@@ -53,8 +84,8 @@ function roomCode() {
 
 function lobbyMsg(room) {
   return {
-    t: 'lobby', room: room.code, host: room.hostId, phase: room.phase, laps: room.laps, bots: room.bots, track: room.track, mode: room.mode,
-    players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, car: p.car, color: p.color ?? -1, bot: !!p.bot, ready: !!p.ready })),
+    t: 'lobby', room: room.code, host: room.hostId, phase: room.phase, laps: room.laps, bots: room.bots, track: room.track, mode: room.mode, m: room.m,
+    players: [...room.players.values()].map(p => ({ id: p.id, name: p.name, car: p.car, color: p.color ?? -1, bot: !!p.bot, ready: !!p.ready, role: p.role === 'thief' ? 'thief' : 'police' })),
   };
 }
 function broadcast(room, msg, exceptId) {
@@ -102,6 +133,13 @@ function leave(ws) {
 function doStart(room, me, ws) {
       dropBots(room);
       const hs = humans(room);
+      if (room.mode === 'mission') {         // Police mission: no bot cars, the host simulates the AI police / thief / robots
+        if (hs.some(p => p.car < 0)) return send(ws, { t: 'err', msg: 'Hamma mashina tanlashi kerak' });
+        room.phase = 'racing';
+        for (const p of room.players.values()) { p.finish = null; p.prog = 0; p.ready = false; }
+        broadcast(room, lobbyMsg(room));
+        return broadcast(room, { t: 'start', grid: {}, laps: 1, countdown: 3, track: room.track, mode: 'mission' });
+      }
       if (hs.some(p => p.car < 0)) return send(ws, { t: 'err', msg: 'Hamma mashina tanlashi kerak' });
       // fill with bots on the free cars
       const free = [...Array(MAX_PLAYERS).keys()].filter(c => !takenCars(room).has(c));
@@ -126,7 +164,7 @@ function handle(ws, m) {
     let room = m.room ? rooms.get(String(m.room).toUpperCase()) : null;
     if (m.room && !room) return send(ws, { t: 'err', msg: `"${String(m.room).toUpperCase()}" xonasi topilmadi` });
     if (!room) {
-      room = { code: roomCode(), players: new Map(), hostId: null, phase: 'lobby', laps: 3, bots: 3, track: 0, mode: 'race' };
+      room = { code: roomCode(), players: new Map(), hostId: null, phase: 'lobby', laps: 3, bots: 3, track: 0, mode: 'race', m: { police: 4, thieves: 1, diff: 1, time: 300 } };
       rooms.set(room.code, room);
     }
     if (room.phase !== 'lobby') return send(ws, { t: 'err', msg: 'Poyga boshlanib ketgan, kuting' });
@@ -148,8 +186,9 @@ function handle(ws, m) {
   switch (m.t) {
     case 'pick': {
       const c = m.car | 0;
-      if (room.phase !== 'lobby' || c < 0 || c >= MAX_PLAYERS) break;
-      if (!takenCars(room).has(c) || me.car === c) me.car = c;
+      const ms = room.mode === 'mission';
+      if (room.phase !== 'lobby' || c < 0 || c >= MAX_PLAYERS + (ms ? 1 : 0)) break;
+      if (ms || !takenCars(room).has(c) || me.car === c) me.car = c;      // mission: any car (also the police SUV, #7), several friends may share one
       if (m.color != null) me.color = cleanColor(m.color);
       broadcast(room, lobbyMsg(room));
       break;
@@ -159,6 +198,14 @@ function handle(ws, m) {
       me.color = cleanColor(m.color);
       broadcast(room, lobbyMsg(room));
       break;
+    case 'role': {        // Police mission: choose to be the thief (only one human may) or police
+      if (room.phase !== 'lobby' || room.mode !== 'mission') break;
+      if (m.role === 'thief') {
+        me.role = 'thief';
+      } else me.role = 'police';
+      broadcast(room, lobbyMsg(room));
+      break;
+    }
     case 'unpick':
       if (room.phase !== 'lobby') break;
       me.car = -1;
@@ -170,7 +217,14 @@ function handle(ws, m) {
       room.laps = Math.max(1, Math.min(10, m.laps | 0 || 3));
       room.bots = Math.max(0, Math.min(6, m.bots | 0));
       if (Number.isInteger(m.track) && m.track >= 0 && m.track < TRACK_COUNT) room.track = m.track;
-      if (m.mode === 'race' || m.mode === 'battle') room.mode = m.mode;
+      if (m.mode === 'race' || m.mode === 'battle' || m.mode === 'mission') {
+        const was = room.mode; room.mode = m.mode;
+        if (was === 'mission' && room.mode !== 'mission') {            // back to one-car-per-player: fix duplicates / the SUV
+          const used = new Set();
+          for (const p of room.players.values()) { if (p.car >= MAX_PLAYERS || used.has(p.car)) p.car = [...Array(MAX_PLAYERS).keys()].find(c => !used.has(c) && !takenCars(room).has(c)) ?? -1; if (p.car >= 0) used.add(p.car); }
+        }
+      }
+      if (m.m && typeof m.m === 'object') room.m = { police: Math.max(1, Math.min(50, m.m.police | 0 || 4)), thieves: Math.max(1, Math.min(8, m.m.thieves | 0 || 1)), diff: [0, 1, 2].includes(m.m.diff | 0) ? m.m.diff | 0 : 1, time: Math.max(60, Math.min(3600, (+m.m.time | 0) || 300)) };
       broadcast(room, lobbyMsg(room));
       break;
     case 'start':
@@ -222,13 +276,33 @@ function handle(ws, m) {
     case 'chat':
       broadcast(room, { t: 'chat', id: me.id, name: me.name, text: String(m.text || '').slice(0, 120) });
       break;
+    case 'mstart': case 'ms': case 'mev': {      // Police mission: host -> everybody else (relayed as is)
+      if (room.hostId !== me.id || room.mode !== 'mission' || room.phase !== 'racing') break;
+      broadcast(room, m, me.id);
+      break;
+    }
+    case 'mcmd': {                               // Police mission: a friend asks the host for something (e.g. the thief drops a bomb)
+      if (room.mode !== 'mission' || room.phase !== 'racing' || room.hostId === me.id || !m.c || typeof m.c !== 'object') break;
+      const host = room.players.get(room.hostId); if (host && host.ws) send(host.ws, { t: 'mcmd', id: me.id, c: m.c });
+      break;
+    }
+    case 'mready': {                             // a friend has loaded the city: tell the host
+      if (room.mode !== 'mission' || room.phase !== 'racing') break;
+      const host = room.players.get(room.hostId); if (host && host.ws) send(host.ws, { t: 'mready', id: me.id });
+      break;
+    }
     case 'ping': send(ws, { t: 'pong', c: m.c }); break;
     default: break;
   }
 }
 
 export function attachGameServer(server) {
-  const wss = new WebSocketServer({ server, maxPayload: 4096 });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 32768 });
+  const hz = createHorrorServer();
+  server.on('upgrade', (req, socket, head) => {
+    const target = (req.url || '').startsWith('/hws') ? hz : wss;
+    target.handleUpgrade(req, socket, head, ws => target.emit('connection', ws, req));
+  });
   wss.on('connection', ws => {
     ws.isAlive = true;
     ws.on('pong', () => { ws.isAlive = true; });
@@ -237,6 +311,7 @@ export function attachGameServer(server) {
     ws.on('error', () => {});
   });
   setInterval(() => wss.clients.forEach(ws => { if (!ws.isAlive) return ws.terminate(); ws.isAlive = false; ws.ping(); }), 15000);
+  wss.horror = hz;
   return wss;
 }
 
@@ -245,9 +320,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const server = createStatic(PORT);
   attachGameServer(server);
   server.listen(PORT, '0.0.0.0', () => {
-    console.log('\n  🏁  POYGA o\'yini ishga tushdi\n');
-    console.log('  Kompyuteringizda:  http://localhost:' + PORT);
+    console.log('\n  🎮  O\'yinlar serveri ishga tushdi\n');
+    console.log('  Kompyuteringizda:  http://localhost:' + PORT + '   (ikkita o\'yin: 🏎 Turbo Drift va 👻 Qorong\'u Uy)');
     for (const u of lanUrls(PORT)) console.log('  Do\'stlar (bir WiFi):  ' + u);
-    console.log('');
+    console.log('  To\'g\'ridan-to\'g\'ri:  /drift  va  /horror\n');
   });
 }

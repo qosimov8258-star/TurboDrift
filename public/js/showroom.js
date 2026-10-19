@@ -35,6 +35,7 @@ export class Showroom {
       const a = (i / 10) * Math.PI * 2, bar = new THREE.Mesh(new THREE.BoxGeometry(0.15, 9, 0.15), new THREE.MeshBasicMaterial({ color: i % 2 ? 0x2a6bff : 0xff3b30 }));
       bar.position.set(Math.cos(a) * 17, 4.5, Math.sin(a) * 17); scene.add(bar);
     }
+    this.extra = [];                     // more cars after `defs`: [{ def, proto }] (e.g. the police SUV)
     this.t = 0; this.cur = null; this.old = null; this.anim = 1; this.index = -1; this.dir = 1;
     this.orbit = 0;
     this.paint = -1;                     // body colour index (see paint.js), -1 = factory
@@ -95,15 +96,20 @@ export class Showroom {
   /** body colour of the shown car (index into PAINTS, -1 = factory) */
   setPaint(idx) { this.paint = idx; if (this.cur) this.cur.setPaint(idx); }
 
-  show(index) {
-    if (index === this.index) return;
+  show(index, pol = null) {
+    const key = pol ? 'p' + index : index;
+    if (key === this.key) return;
+    this.key = key;
+    if (pol) index = pol.car;
     const dir = index > this.index ? 1 : -1;
     this.dir = dir;
     if (this.old) { this.table.remove(this.old.group); }
     this.old = this.cur;
     this.index = index;
-    const def = this.defs[index];
-    const vis = new CarVisual(this.protos[index], def, this.paint);
+    const ex = index >= this.defs.length ? this.extra[index - this.defs.length] : null;
+    const def = ex ? ex.def : this.defs[index];
+    const vis = new CarVisual(ex ? ex.proto : this.protos[index], def, pol ? pol.paint : ex ? -1 : this.paint);
+    if (pol) { vis.addSiren(); this.sir = vis; }
     vis.group.scale.setScalar(1.25);
     this.cur = vis;
     this.table.add(vis.group);
@@ -128,6 +134,7 @@ export class Showroom {
       this.cur.group.rotation.y = spin + (1 - e) * 1.4 * this.dir;
       this.cur.group.position.y = 0;
       this.cur.update(dt, { x: this.cur.group.position.x, z: 0, psi: this.cur.group.rotation.y, steerAngle: 0, wheelSpin: 0, latG: 0, accG: 0, handbrake: false });
+      this.cur.updateSiren?.(this.t, true);
       this.cur.group.position.set((1 - e) * 9 * this.dir, 0, 0);
       this.cur.group.rotation.set(0, spin + (1 - e) * 1.4 * this.dir, 0);
     }

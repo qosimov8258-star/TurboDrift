@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>Qorong'u Uy — Horror</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👻</text></svg>">
+<link rel="stylesheet" href="/horror/horror.css">
+<script type="importmap">
+{ "imports": { "three": "/three/build/three.module.js", "three/addons/": "/three/examples/jsm/" } }
+</script>
+</head>
+<body>
+<canvas id="hzCanvas"></canvas>
+<div id="hzVig"></div><div id="hzGrain"></div><div id="hzFlash"></div>
+
+<!-- ============ YUKLANMOQDA ============ -->
+<div id="hzLoading" class="scr on solid">
+  <div class="title sm"><span>QORONG'U</span><b>UY</b></div>
+  <div class="bar"><div id="hzLoadFill"></div></div>
+  <p id="hzLoadText">Qo'rqinchli narsalar yuklanmoqda…</p>
+</div>
+
+<!-- ============ START ============ -->
+<div id="hzSplash" class="scr">
+  <div class="title"><span>QORONG'U</span><b>UY</b></div>
+  <p class="tagline">Chiroqlarni o'chiring. Quloqchin taqing.</p>
+  <button id="hzStartBtn" class="hbtn primary big"><span>START</span></button>
+</div>
+<video id="hzVideo" playsinline preload="auto" class="hidden"></video>
+
+<!-- ============ ASOSIY MENYU ============ -->
+<div id="hzMenu" class="scr">
+  <div class="card">
+    <a class="back-portal" href="/">← O'yinlar</a>
+    <div class="title"><span>QORONG'U</span><b>UY</b></div>
+    <p class="tagline">HORROR · 10 ta daraja · do'stlar bilan yoki yakka</p>
+    <label class="field">Ismingiz<input id="hzName" maxlength="14" placeholder="Qahramon" autocomplete="off"></label>
+    <div class="field">Kim bo'lasiz?
+      <div class="diffrow"><button class="rbtn" id="hzRoleS">🔦 Omon qolgan</button><button class="rbtn" id="hzRoleG">👻 Ruh</button></div>
+      <div class="chars" id="hzChars"></div>
+    </div>
+    <button id="hzSolo" class="hbtn primary"><span>YAKKA O'YIN</span><small>ruh sun'iy intellekt</small></button>
+    <button id="hzFriends" class="hbtn"><span>DO'STLAR BILAN</span><small>xona yarating, ruh bo'lish ham mumkin</small></button>
+    <div id="hzJoinBox" class="hidden">
+      <button id="hzCreate" class="hbtn small">Xona yaratish</button>
+      <div class="or">yoki kod bilan kiring</div>
+      <div class="row"><input id="hzRoomIn" maxlength="4" placeholder="KOD" autocomplete="off"><button id="hzJoin" class="hbtn small">Kirish</button></div>
+      <div id="hzMenuErr" class="err"></div>
+      <button id="hzJoinBack" class="hbtn ghost small">Orqaga</button>
+    </div>
+    <button id="hzHow" class="hbtn ghost small">Qanday o'ynaladi?</button>
+    <button id="hzSnd" class="snd" title="Ovoz">🔊</button>
+  </div>
+</div>
+
+<!-- ============ DARAJA TANLASH ============ -->
+<div id="hzLevels" class="scr">
+  <div class="card wide">
+    <h2>Darajani tanlang</h2>
+    <div id="hzLevelGrid" class="lgrid"></div>
+    <div class="diffrow">Qiyinlik:
+      <button class="dbtn" data-d="0">Oson</button><button class="dbtn on" data-d="1">O'rtacha</button><button class="dbtn" data-d="2">Dahshat</button>
+    </div>
+    <div class="row">
+      <button id="hzLevelBack" class="hbtn ghost small">Orqaga</button>
+      <button id="hzLevelGo" class="hbtn primary small"><span id="hzLevelGoTxt">BOSHLASH</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ LOBBI ============ -->
+<div id="hzLobby" class="scr">
+  <div class="card wide">
+    <h2>Xona <b id="hzCode" class="code">----</b> <button id="hzCopy" class="hbtn ghost tiny">Havolani nusxalash</button></h2>
+    <div class="lobby-cols">
+      <div>
+        <div class="plist" id="hzPlist"></div>
+        <div class="field">Qahramon <div class="chars small" id="hzLobbyChars"></div></div>
+        <button id="hzRole" class="hbtn small">RUH BO'LISH</button>
+        <p class="hint">Ruh bo'lsangiz: boshqalar sizdan qochadi. <b>E</b> — ko'rinmas bo'lish, <b>1·2·3·4</b> — qo'rqinchli gaplar, <b>R</b> — narsa olib otish.</p>
+      </div>
+      <div>
+        <div class="lv-pick"><div class="lv-n" id="hzLobbyLv">1</div><div><b id="hzLobbyLvName">—</b><small id="hzLobbyLvSub"></small></div></div>
+        <div id="hzHostBox">
+          <button id="hzLobbyPick" class="hbtn small">Darajani tanlash</button>
+          <div class="diffrow">Qiyinlik: <button class="dbtn lb" data-d="0">Oson</button><button class="dbtn lb on" data-d="1">O'rtacha</button><button class="dbtn lb" data-d="2">Dahshat</button></div>
+          <button id="hzStart" class="hbtn primary"><span>BOSHLASH</span></button>
+        </div>
+        <p id="hzWait" class="hint hidden">Xona egasi o'yinni boshlashini kuting…</p>
+        <div id="hzLobbyErr" class="err"></div>
+      </div>
+    </div>
+    <button id="hzLobbyLeave" class="hbtn ghost small">Chiqish</button>
+  </div>
+</div>
+
+<!-- ============ O'YIN HUD ============ -->
+<div id="hzHud" class="hidden">
+  <div id="hzTop"><div id="hzLvl"></div><div id="hzObj"></div><div id="hzTime"></div></div>
+  <div id="hzPlayers"></div>
+  <div id="hzMsgs"></div>
+  <div id="hzSub"></div>
+  <div id="hzCross"></div>
+  <div id="hzPrompt" class="hidden"><div id="hzPromptTxt"></div><div class="pbar"><div id="hzPromptFill"></div></div></div>
+  <div id="hzBottom"><div id="hzHearts"></div><div class="stam"><div id="hzStam"></div></div><div id="hzHelp"></div></div>
+  <div id="hzGhostPanel" class="hidden">
+    <div class="gp-title">SIZ — RUH</div>
+    <div class="gp-row"><kbd>E</kbd> <span id="hzInvTxt">ko'rinish</span></div>
+    <div class="gp-row"><kbd>1</kbd> Orqaga qarama · <kbd>2</kbd> Ortingdaman · <kbd>3</kbd> Chiqolmaysan · <kbd>4</kbd> Kulgi</div>
+    <div class="gp-row"><kbd>R</kbd> narsa olish / otish · <kbd>Shift</kbd> tez</div>
+  </div>
+  <canvas id="hzMap" class="hidden"></canvas>
+  <div id="hzMarks"></div>
+  <div id="hzDead" class="hidden"><b>YIQILDINGIZ</b><span>Sheriklaringizni kuzating…</span></div>
+  <div id="hzTouch" class="hidden">
+    <div id="tLook"></div>
+    <div id="tJoy"><div id="tKnob"></div></div>
+    <div class="tbtns" id="tBtnsS"><button data-key="KeyE">E</button><button data-key="KeyF">🔦</button><button data-key="ShiftLeft">⚡</button></div>
+    <div class="tbtns g hidden" id="tBtnsG"><button data-key="KeyE">👁</button><button data-key="Digit1">1</button><button data-key="Digit2">2</button><button data-key="Digit3">3</button><button data-key="Digit4">4</button><button data-key="KeyR">R</button><button data-key="ShiftLeft">⚡</button></div>
+  </div>
+</div>
+
+<div id="hzIntro" class="hidden"><h1 id="hzIntroT"></h1><p id="hzIntroS"></p></div>
+
+<!-- ============ PAUZA ============ -->
+<div id="hzPause" class="scr">
+  <div class="card">
+    <h2 id="hzPauseT">To'xtatildi</h2>
+    <button id="hzResume" class="hbtn primary"><span id="hzResumeTxt">DAVOM ETISH</span></button>
+    <button id="hzQuit" class="hbtn ghost small">Menyuga chiqish</button>
+    <p class="hint"><b>WASD</b> yurish · <b>Shift</b> yugurish · <b>E</b> (ushlab turing) shkafni qidirish · <b>F</b> fanar · <b>M</b> ovoz</p>
+  </div>
+</div>
+
+<!-- ============ NATIJA ============ -->
+<div id="hzEnd" class="scr">
+  <div class="card">
+    <h2 id="hzEndT"></h2>
+    <p id="hzEndS" class="hint"></p>
+    <button id="hzAgain" class="hbtn primary"><span id="hzAgainTxt">YANA O'YNASH</span></button>
+    <button id="hzNext" class="hbtn hidden"><span>KEYINGI DARAJA</span></button>
+    <button id="hzEndMenu" class="hbtn ghost small">Menyu</button>
+  </div>
+</div>
+
+<!-- ============ QO'LLANMA ============ -->
+<div id="hzHowTo" class="scr">
+  <div class="card wide how">
+    <h2>Qanday o'ynaladi?</h2>
+    <div class="how-cols">
+      <div><h3>🔦 Omon qolgan</h3>
+        <ul><li>Hamma chiroq o'chiq — faqat <b>fanar</b> (F).</li><li>Uylardagi <b>shkaflarni</b> qidiring: yaqin kelib <b>E</b> ni ushlab turing.</li><li>Kalit(lar)ni toping, so'ng <b>yashil chiroqli chiqish eshigini</b> toping va E bilan oching.</li><li>Ruh sizni ko'rsa — qochib, Shift bilan yuguring. Har bir tutilish — bitta yurak.</li></ul></div>
+      <div><h3>👻 Ruh (do'st bo'lishi mumkin)</h3>
+        <ul><li>Siz hamma narsani ko'rasiz, devordan o'tasiz.</li><li><b>E</b> — ko'rinmas bo'lish / ko'rinish.</li><li><b>1</b> «Orqangga qarama», <b>2</b> «Men ortingdaman», <b>3</b>, <b>4</b> — qo'rqinchli ovozlar.</li><li><b>R</b> — yaqin narsani olib, yana R bilan otish.</li><li>To'satdan paydo bo'ling — ular baqirib yuborishadi!</li></ul></div>
+    </div>
+    <button id="hzHowBack" class="hbtn primary small">Tushunarli</button>
+  </div>
+</div>
+
+<script type="module" src="/horror/js/main.js"></script>
+</body>
+</html>

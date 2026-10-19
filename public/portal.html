@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#050505">
+<title>O'yinlar — Turbo Drift & Qorong'u Uy</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎮</text></svg>">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; min-height: 100%; background: #050506; color: #eee; font-family: -apple-system, 'Segoe UI', Roboto, system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 28px 16px; gap: 26px; background: radial-gradient(1200px 600px at 50% -10%, #1b1b2a 0, transparent 60%), #050506; }
+  h1 { margin: 0; font-size: clamp(22px, 4vw, 34px); letter-spacing: 6px; font-weight: 600; text-transform: uppercase; color: #cfcfd8; text-align: center; }
+  h1 small { display: block; font-size: 13px; letter-spacing: 3px; color: #7b7b88; margin-top: 8px; font-weight: 400; text-transform: none; }
+  .games { display: grid; grid-template-columns: repeat(2, minmax(0, 420px)); gap: 22px; width: 100%; justify-content: center; }
+  @media (max-width: 920px) { .games { grid-template-columns: minmax(0, 460px); } }
+  .g { position: relative; display: block; min-height: 400px; border-radius: 16px; overflow: hidden; text-decoration: none; color: #fff; isolation: isolate; border: 1px solid rgba(255,255,255,.1); transition: transform .25s, box-shadow .25s, border-color .25s; display: flex; flex-direction: column; justify-content: flex-end; padding: 26px; }
+  .g::before { content: ''; position: absolute; inset: 0; z-index: -2; transition: transform .6s; }
+  .g::after { content: ''; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, transparent 20%, rgba(0,0,0,.85)); }
+  .g:hover { transform: translateY(-6px); } .g:hover::before { transform: scale(1.08); }
+  .g .tag { position: absolute; top: 18px; left: 22px; font-size: 12px; letter-spacing: 3px; text-transform: uppercase; padding: 4px 10px; border-radius: 20px; background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.2); }
+  .g .big { position: absolute; top: 62px; left: 0; right: 0; text-align: center; font-size: 110px; filter: drop-shadow(0 10px 30px rgba(0,0,0,.6)); }
+  .g h2 { margin: 0 0 6px; font-size: 32px; letter-spacing: 3px; text-transform: uppercase; }
+  .g p { margin: 0 0 16px; color: #d0d0d8; font-size: 14px; line-height: 1.5; }
+  .g .btn { align-self: flex-start; padding: 11px 22px; border-radius: 30px; font-weight: 600; letter-spacing: 2px; font-size: 13px; text-transform: uppercase; }
+  .drift { border-color: rgba(255, 120, 40, .35); } .drift:hover { box-shadow: 0 18px 60px rgba(255, 110, 20, .35); border-color: rgba(255,140,60,.8); }
+  .drift::before { background: radial-gradient(circle at 70% 25%, #ff7a2a 0, transparent 45%), linear-gradient(135deg, #1a1030, #3a0f1a 60%, #120808); }
+  .drift .btn { background: linear-gradient(90deg, #ff6a1a, #ffb21a); color: #1a0a00; }
+  .horror { border-color: rgba(200, 20, 20, .35); } .horror:hover { box-shadow: 0 18px 60px rgba(200, 10, 10, .45); border-color: rgba(230,40,40,.8); }
+  .horror::before { background: radial-gradient(circle at 50% 30%, #5a0808 0, transparent 50%), radial-gradient(circle at 20% 90%, #1a2a3a 0, transparent 40%), linear-gradient(160deg, #0a0608, #1a0507 60%, #050203); animation: hp 6s infinite; }
+  @keyframes hp { 0%, 100% { filter: brightness(1); } 48% { filter: brightness(1); } 50% { filter: brightness(.4); } 52% { filter: brightness(1.2); } 54% { filter: brightness(.6); } }
+  .horror .btn { background: linear-gradient(90deg, #8a0d0d, #d11a1a); }
+  .horror h2 { text-shadow: 0 0 18px #a00; font-family: Georgia, serif; }
+  .foot { color: #666672; font-size: 12px; text-align: center; }
+</style>
+</head>
+<body>
+<script>
+  // eski havolalar (/?room=ABCD) Turbo Drift'ga olib boradi
+  if (location.search.includes('room=')) location.replace('/drift' + location.search);
+</script>
+<h1>O'yinlar<small>Do'stlar bilan bitta havola orqali o'ynang</small></h1>
+<div class="games">
+  <a class="g drift" href="/drift">
+    <span class="tag">Poyga · 1–7 kishi</span><div class="big">🏎️</div>
+    <h2>Turbo Drift</h2>
+    <p>7 ta haqiqiy 3D mashina, 10 ta trassa, jang arenasi va politsiya missiyasi. Botlarga qarshi yoki do'stlar bilan onlayn.</p>
+    <span class="btn">O'ynash →</span>
+  </a>
+  <a class="g horror" href="/horror">
+    <span class="tag">Horror · 1–8 kishi</span><div class="big">👻</div>
+    <h2>Qorong'u Uy</h2>
+    <p>Qorong'u uylarda fanar bilan yuring, shkaflardan kalit toping va chiqish eshigini oching. Do'stlaringizdan biri ruh bo'lishi mumkin. 10 ta daraja.</p>
+    <span class="btn">O'ynash →</span>
+  </a>
+</div>
+<div class="foot">Bir WiFi'dagi do'stlar uchun: serverda ko'rsatilgan manzilni ochishsin.</div>
+</body>
+</html>

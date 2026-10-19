@@ -1,0 +1,10 @@
+import { loadTriangles, bounds, findGround, rasterSlab, edt } from './raster.mjs';
+import fs from 'fs';
+const [file, cellArg] = process.argv.slice(2);
+const T = await loadTriangles(file);
+const b = bounds(T);
+console.log(file, 'tris', T.length / 9, 'bounds', JSON.stringify(b, (k, v) => typeof v === 'number' ? +v.toFixed(2) : v));
+const span = Math.max(b.x1 - b.x0, b.z1 - b.z0);
+const cell = +cellArg || span / 1600;
+const gr = findGround(T, b, Math.max(0.01, span / 4000));
+console.log('ground candidates', gr.map(g => `${g.y.toFixed(3)}(${g.area.toFixed(0)})`).join(' '));

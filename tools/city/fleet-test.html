@@ -1,0 +1,25 @@
+<!doctype html><body style="margin:0"><script type="importmap">{"imports":{"three":"/three/build/three.module.js","three/addons/":"/three/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { Fleet } from '/js/missionfleet.js';
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); r.setSize(1000, 600); document.body.appendChild(r.domElement);
+const s = new THREE.Scene(); s.background = new THREE.Color(0x9aa7b5); s.add(new THREE.HemisphereLight(0xffffff, 0x444444, 2.2)); const d = new THREE.DirectionalLight(0xffffff, 2); d.position.set(3, 5, 4); s.add(d);
+s.add(new THREE.GridHelper(20, 20));
+const f = new Fleet(); await f.load();
+import('three/addons/loaders/GLTFLoader.js');
+const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js'); const { MeshoptDecoder } = await import('three/addons/libs/meshopt_decoder.module.js'); const { prepareCar } = await import('/js/carmodel.js');
+const gl = new GLTFLoader(); gl.setMeshoptDecoder(MeshoptDecoder);
+const bm = await new Promise(res => gl.load('/models/bmw_m3.glb', res)); const bres = prepareCar(bm.scene, { front: '-z' }); const bc = bres.root.clone(true); bc.position.x = -6; s.add(bc);
+const bw = {}; for (const k of ['LF', 'LB']) { const o = bc.getObjectByName('steer_' + k) || bc.getObjectByName('spin_' + k); bw[k] = o ? o.getWorldPosition(new THREE.Vector3()).toArray().map(v => +v.toFixed(2)) : null; }
+window.BMW = bw;
+const car = f.suv.clone(true); s.add(car);
+const wheels = {}; for (const k of ['LF', 'RF', 'LB', 'RB']) { const o = car.getObjectByName('steer_' + k); wheels[k] = o ? o.getWorldPosition(new THREE.Vector3()).toArray().map(v => +v.toFixed(2)) : null; }
+const bb = new THREE.Box3().setFromObject(car);
+const rb = f.makeRobot(); rb.group.position.set(4, 0, 0); s.add(rb.group); rb.mixer.update(0.3);
+const rbb = new THREE.Box3().setFromObject(rb.group);
+const cam = new THREE.PerspectiveCamera(40, 1000 / 600, 0.1, 100); cam.position.set(-8, 4, 8); cam.lookAt(2, 1, 0); r.render(s, cam);
+const a = r.domElement.toDataURL('image/jpeg', 0.8);
+cam.position.set(0, 1.6, 9); cam.lookAt(0, 0.8, 0); r.render(s, cam);
+const b = r.domElement.toDataURL('image/jpeg', 0.8);
+window.RESULT = { bmw: window.BMW, ok: f.suvOk, wheels, size: bb.getSize(new THREE.Vector3()).toArray(), robotSize: rbb.getSize(new THREE.Vector3()).toArray(), clip: f.clips.map(c => c.name + c.duration), imgs: [a, b] };
+</script>

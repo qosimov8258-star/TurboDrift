@@ -1,0 +1,22 @@
+<!doctype html><html><body style="margin:0;background:#222"><canvas id=c width=1400 height=500></canvas>
+<script type="importmap">{ "imports": { "three": "/three/build/three.module.js", "three/addons/": "/three/examples/jsm/" } }</script>
+<script type="module">
+import * as THREE from 'three';
+import { CHARS, GHOST_DEF, createActor } from '/horror/js/actors.js';
+const r = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true });
+const s = new THREE.Scene(); s.background = new THREE.Color(0x303038);
+s.add(new THREE.HemisphereLight(0xffffff, 0x444455, 1.4)); const dl = new THREE.DirectionalLight(0xffffff, 2); dl.position.set(2, 4, 5); s.add(dl);
+const cam = new THREE.PerspectiveCamera(35, 1400 / 500, 0.1, 50); cam.position.set(0, 1.4, 8.5); cam.lookAt(0, 1, 0);
+const out = [];
+let x = -4.8;
+for (const d of [...CHARS, GHOST_DEF]) {
+  try {
+    const a = await createActor(d); a.root.position.x = x; x += 2; s.add(a.root);
+    if (a.mixer) { a.actions.forEach(ac => { ac.paused = false; }); a.mixer.update(0.3); }
+    const b = new THREE.Box3().setFromObject(a.root);
+    out.push(d.id + ' ok size=' + b.getSize(new THREE.Vector3()).toArray().map(v => v.toFixed(2)) + ' anims=' + a.actions.length);
+  } catch (e) { out.push(d.id + ' ERR ' + e); }
+}
+r.render(s, cam);
+window.__done = out;
+</script></body></html>

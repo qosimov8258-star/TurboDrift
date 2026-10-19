@@ -55,6 +55,11 @@ const THEMES = {
     grass: 0xffffff, ground: { tint: '#7d848c', lift: 'rgba(200,205,210,0.14)' }, leaf: [0.3, 0.1, 0.35, 0.2], mount: 0x6b6f86, sun: [-0.7, 0.22, 0.55], sunColor: 0xffb877, sunI: 3.4,
     hemi: [0xffd1a8, 0x3a3f52, 0.75],
   },
+  police: {
+    decor: 'city', sky: [0x2a64c4, 0x86b9ec, 0xdbe8f3], fog: 0xcdd9e4, fogNear: 240, fogFar: 2600,
+    grass: 0xffffff, ground: { tint: '#6f7b63', lift: 'rgba(190,200,175,0.10)' }, leaf: [0.3, 0.1, 0.35, 0.2], mount: 0x6b6f86, sun: [-0.5, 0.62, 0.6], sunColor: 0xfff2dc, sunI: 3.3,
+    hemi: [0xcfe3ff, 0x59606a, 0.95],
+  },
   snow: {
     decor: 'snow', sky: [0x5f86b3, 0xb5cde4, 0xeef4fa], fog: 0xe3ecf4, fogNear: 150, fogFar: 1700,
     grass: 0xffffff, ground: { tint: '#e8f0f8', lift: 'rgba(255,255,255,0.74)' }, leaf: [0.47, 0.08, 0.16, 0.6], mount: 0xdfe8f2, mountSnow: true, sun: [0.3, 0.38, 0.8], sunColor: 0xeaf2ff, sunI: 2.7,

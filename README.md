@@ -1,3 +1,62 @@
+# 🎮 O'yinlar — Turbo Drift va Qorong'u Uy
+
+Bitta server, ikkita o'yin. Havolani (`http://localhost:3000`) ochsangiz ikkita o'yin turadi:
+
+| O'yin | Manzil | Nima |
+|---|---|---|
+| 🏎 **Turbo Drift** | `/drift` | 3D poyga, jang arenasi, politsiya missiyasi (quyida) |
+| 👻 **Qorong'u Uy** | `/horror` | Horror: qorong'u uylar, shkaflardan kalit, chiqish eshigi, ruh |
+
+```bash
+npm install
+npm start      # http://localhost:3000   (bir WiFi'dagi do'stlarga terminaldagi 192.168.x.x manzil)
+```
+Eski havolalar (`/?room=ABCD`) avtomatik Turbo Drift'ga olib boradi.
+
+---
+
+# 👻 QORONG'U UY — horror o'yini
+
+**Maqsad:** qorong'u uylarda faqat **fanar** bilan yuring, **shkaflarni** qidirib **kalit(lar)ni** toping, keyin **yashil chiroqli chiqish eshigini** topib oching va qochib chiqing. Ruh sizni doim kuzatib turadi.
+
+- **10 ta daraja** (har birining o'z mavzusi, o'lchami, kalit soni va ruh qiyinligi bor): Tashlandiq uy → Maktab → Kasalxona → Ibodatxona → Telbalar shifoxonasi → Mehmonxona 13 → Yerto'la → Qasr → Fabrika → Do'zax uyi.
+- **Yakka o'yin** (ruh — sun'iy intellekt) yoki **do'stlar bilan** (8 tagacha, xona kodi). Do'stlardan biri **ruh** bo'lishi mumkin.
+- Xonalar har safar yangi quriladi (seed), hamma o'yinchida bir xil. Chiroqlar chaqnaydi, g'alati va qadimiy narsalar: portretlar (ko'zlari porlaydi), osilgan qo'g'irchoqlar, ritual doiralari, qonli izlar…
+- **Musiqa** (`horror/music/`): `start.mp3` — menyuda o'yin boshlanguncha; `room1-3` — har bir xonaga aralashtirib qo'yiladi (devor orqali xira eshitiladi); `all*` — **har 20 soniyada** hamma xonalarga qayta aralashtirib qo'yiladi (hamma o'yinchida bir xil). Baqiriq, g'ichirlash, yurak urishi, eshik ovozlari WebAudio bilan sintez qilinadi.
+- **Personajlar** (`horror/*.glb`): Masha, Pushti quyon, Qo'rqoq (scarecrow), Tabassum (smily monster) — qahramonlar; qonli ruh — dushman. `node tools/horror/optimize-models.mjs` ularni `public/horror/models/` ga yengil qilib ko'chiradi.
+
+## Boshqaruv
+
+| Omon qolgan | |
+|---|---|
+| W A S D | yurish (sichqoncha — qarash) |
+| Shift | yugurish (kuch tugaydi) |
+| **E** (ushlab turing) | shkafni qidirish · **E** (bosing) chiqish eshigini ochish |
+| F | fanar yoqish/o'chirish |
+| M | ovozni o'chirish |
+
+| 👻 Ruh | |
+|---|---|
+| WASD + sichqoncha | uchish (devordan o'tadi); Shift — tez |
+| **E** | ko'rinmas bo'lish / yana ko'rinish |
+| **1** «Orqangga qarama…» · **2** «Men ortingdaman…» · **3** «Chiqib ketolmaysan…» · **4** kulgi | qo'rqinchli ovoz (matn ekranda ham chiqadi) |
+| **R** | yaqin narsani olish, yana **R** — otish |
+| (ruh ko'rinadi va tegsa) | o'yinchi yurak yo'qotadi |
+
+Ruh hamma o'yinchini devor orqali ham ko'radi. Ruhni **to'satdan** ko'rgan o'yinchi baland ovozda baqiradi (do'stlar ham eshitadi). Telefonda sensorli boshqaruv bor.
+
+## Tekshiruvlar
+
+```bash
+node tools/horror/test-maps.mjs 30      # 300 ta xarita: bog'langanlik, kalit/shkaf/eshikka yetib borish
+node tools/horror/test-sim.mjs 500      # 500 ta to'liq o'yin (botlar, AI/odam-ruh, tarmoq kechikishi), holat sinxroni
+node tools/horror/test-e2e.mjs 150 50 4 # brauzerda (Playwright): yakka + 3 o'yinchili xona, qayta boshlash, chiqib ketish
+```
+
+Fayllar: `horror-server.js` (xonalar, `/hws`), `public/horror/` (`js/sim.js` — mantiq, `mapgen.js`+`decor.js` — xarita, `game.js` — render, `audio.js`, `ghostai.js`, `bot.js`).
+
+---
+
 # 🏎 TURBO DRIFT — 3D poyga o'yini
 
 7 ta haqiqiy 3D mashina (BMW M3, BMW M3 GTR, Dodge Charger, Ferrari 296 GT3, Mercedes-AMG GT3, Toyota GR Supra GT300, Toyota Supra MK4), hammasi **bir xil kuchda**.
@@ -107,3 +166,33 @@ Botlar ham shu qobiliyatlardan foydalanadi (vaziyatga qarab, ~2 s da bir marta).
 - **Mashina rangi** — 4 xil rang (`public/js/paint.js`), onlayn ham ko'rinadi.
 - **Telefon boshqaruvi** — ekrandagi tugmalar (`public/js/touch.js`), poyga paytida pauza/kamera/ovoz/tiklash tugmalari.
 - Orqaga yurish va kamera tuzatildi; tez tezlikda titrash va yengil grafika (uzoq mashinalar soddalashtiriladi).
+
+## Missiya — Politsiya (3 ta shahar, ochiq dunyo)
+
+Bosh menyuda **MISSIYA** → **Politsiya missiyasi**. Sozlamalar: **rol**, **politsiya soni (1–20)**, **qiyinlik**, **vaqt (istalgan daqiqa, 1–60 — o'zingiz yozasiz)**, **mashina**.
+
+| Rol | Maqsad |
+|---|---|
+| **O'G'RI** | 3 ta shahar bo'ylab **5 ta pul xaltasini** yig'ing, keyin yashil **yashirin uyga** yeting. Siz tanlagan sondagi politsiya sizni quvadi. |
+| **POLITSIYA** | Siz + (son − 1) ta AI politsiya qochayotgan AI o'g'rini quvasiz. |
+
+**Ushlash qoidasi:** politsiya mashinasi o'g'ri yonida (8 m ichida) turib, uni **ketma-ket 10 soniya to'xtatib tursa** (tezligi < 11 km/s; 2 va undan ortiq mashina bo'lsa < 22 km/s) — o'g'ri ushlanadi. Qimirlab ketsa shkala kamayadi. Jon 0 bo'lsa mashina portlaydi.
+
+**Robot politsiya:** 1 daqiqada ushlanmasa, har 45 soniyada (ko'pi bilan 3 ta) o'g'ri yo'lining **oldidan** to'siq paydo bo'ladi: ko'cha bo'ylab qo'yilgan politsiya mashinalari + ularning orqasida qurolli **robotlar** (`robot_police_unit_animated.glb`). Robotlar 60 m gacha o'q uzadi, mashinaga tegsa **ozgina jon** ketadi (1–3). Jon kamaysa AI o'g'ri sekinlashadi.
+
+**Do'stlar bilan:** Bosh menyu → **DO'STLAR BILAN** → **POYGA / JANG / MISSIYA**. MISSIYA tanlansa hamma do'stlar politsiya bo'lib AI o'g'rini birga quvadi (xona egasi AI, robotlar va qoidalarni hisoblaydi, qolganlar o'z mashinasini haydaydi). Xona egasi lobbida politsiya sonini, vaqtni, qiyinlikni belgilaydi.
+
+- Politsiya mashinalari: **Toyota GR Supra GT300**, **Supra MK4** va **politsiya SUV** (`police_car_suv.glb`) — tom ustida qizil-ko'k mayoq, sirena, yorug'lik.
+- Uch shahar masshtablangan: har bir ko'cha va oraliq kamida **3,2 m** (mashina 1,85 m), ulovchi yo'llar 8 m (331 / 252 / 207 m).
+- Boshqaruv poygadagi bilan bir xil. **T** — mashinani yo'lga qaytarish, **C** — kamera, **ESC** — pauza. Chap pastda **radar**, ekranda xalta / uy / o'g'ri / to'siq belgilari.
+
+### Dunyoni qayta yig'ish
+```bash
+node tools/city/optimize-cities.mjs     # xom modellar -> public/models/city_a|b|c.glb, police_suv.glb, robot.glb
+node tools/city/build-world.mjs --png   # masshtab, joylashuv, ulovchi yo'llar, to'qnashuv xaritasi -> public/mission/world.{json,sdf}
+node tools/city/report-world.mjs        # ko'cha kengliklari hisoboti
+```
+Masshtab / joylashuv `tools/city/build-world.mjs` boshidagi `CITIES` ro'yxatida. To'qnashuv: har bir shaharning yerdan 0,45–2,2 m balandlikdagi qismi rasterlanadi → imzolangan masofa maydoni (SDF); mashinalar 3 ta aylana bilan shu maydonga uriladi (`public/js/world.js`).
+
+Tekshiruv: `node tools/test-mission.mjs` (skrinshotlar) · `node tools/test-mission-flow.mjs` (menyu → missiya → pauza → natija oqimi) · `ROLE=police|thief POLICE=4 node tools/sim-mission.mjs` (renderlarsiz AI simulyatsiyasi).
+`node tools/test-online-mission.mjs` — ikki brauzer: xona yaratish, qo'shilish, missiya, natija.

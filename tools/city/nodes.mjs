@@ -1,0 +1,10 @@
+import { chromium } from 'playwright';
+import { createStatic } from '../../server.js';
+const srv = createStatic(3502); await new Promise(r => srv.listen(3502, r));
+const b = await chromium.launch({ args: ['--use-gl=swiftshader'] }); const p = await b.newPage();
+await p.goto('http://localhost:3502/tools/city/suv-nodes.html?m=' + process.argv[2]);
+await p.waitForFunction('window.RESULT', null, { timeout: 60000 });
+const R = await p.evaluate('window.RESULT');
+console.log('box', JSON.stringify(R.box), 'anims', R.anims);
+for (const o of R.out) if (o[1] !== 'Bone' || process.argv[3]) console.log(JSON.stringify(o));
+await b.close(); srv.close();

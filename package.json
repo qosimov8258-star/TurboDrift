@@ -5,7 +5,10 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "start": "node server.js",
+    "world": "node tools/city/optimize-cities.mjs && node tools/city/build-world.mjs",
+    "test:horror": "node tools/horror/test-maps.mjs 20 && node tools/horror/test-sim.mjs 200",
+    "test:horror:e2e": "node tools/horror/test-e2e.mjs 150 50 4"
   },
   "keywords": [],
   "author": "",
