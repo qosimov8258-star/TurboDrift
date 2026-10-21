@@ -1,0 +1,11 @@
+import { chromium } from 'playwright';
+import { createStatic, attachGameServer } from '../../server.js';
+const [qs, out] = process.argv.slice(2);
+const srv = createStatic(3292); attachGameServer(srv); await new Promise(r => srv.listen(3292, r));
+const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const p = await b.newPage({ viewport: { width: 1600, height: 500 } });
+p.on('pageerror', e => console.log('[pageerror]', e.message));
+await p.goto('http://localhost:3292/tools/horror/actor-view.html?' + qs);
+await p.waitForFunction('window.__done', null, { timeout: 90000 });
+const d = await p.evaluate(() => window.__done); if (d.trace) console.log(d.trace.map(r => JSON.stringify(r)).join('\n')); console.log(d.bones.slice(65).join(' ')); console.log(JSON.stringify({ clips: d.clips, box: d.box, nb: d.bones.length, pbox: d.pbox, bones: d.bones.slice(0, 200).join(' ') }));
+await p.screenshot({ path: out }); await b.close(); srv.close(); process.exit(0);

@@ -1,7 +1,7 @@
 // horror/*.glb -> public/horror/models/*.glb  (kichik, tez yuklanadigan nusxalar; asl fayllar o'zgarmaydi)
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
-import { dedup, prune, textureCompress, quantize, meshopt, weld, simplify, flatten, resample } from '@gltf-transform/functions';
+import { metalRough, dedup, prune, textureCompress, quantize, meshopt, weld, simplify, flatten, resample } from '@gltf-transform/functions';
 import { MeshoptEncoder, MeshoptDecoder, MeshoptSimplifier } from 'meshoptimizer';
 import draco3d from 'draco3dgltf';
 import sharp from 'sharp';
@@ -17,11 +17,16 @@ const map = {
   'masha_rig_masha_and_the_bear.glb': ['masha', 0.8],
   'pink_rabbit.glb': ['rabbit', 0.6],
   'smily_horror_monster.glb': ['monster', 0.6],
+  '../horror/music/snake.glb': ['snake', 1],
+  'badroom.glb': ['badroom', 0.6],
+  'killer.glb': ['killer', 0.5],
 };
+const only = process.argv[2];
 for (const [src, [dst, ratio]] of Object.entries(map)) {
+  if (only && dst !== only) continue;
   const t = Date.now();
   const doc = await io.read('horror/' + src);
-  const fns = [dedup(), prune(), textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [512, 512], quality: 78 }), weld()];
+  const fns = [metalRough(), dedup(), prune(), textureCompress({ encoder: sharp, targetFormat: 'webp', resize: (dst === 'badroom' || dst === 'killer') ? [1024, 1024] : [512, 512], quality: 78 }), weld()];
   if (!doc.getRoot().listSkins().length) fns.push(simplify({ simplifier: MeshoptSimplifier, ratio, error: 0.01 }));
   fns.push(quantize({ quantizePosition: 14, quantizeNormal: 10, quantizeTexcoord: 12 }), meshopt({ encoder: MeshoptEncoder, level: 'medium' }));
   await doc.transform(...fns);

@@ -8,9 +8,13 @@ import { GhostAI, PHRASES, HOTKEY_PHRASE } from './ghostai.js';
 import { hash32 } from './rng.js';
 import { roomAt } from './mapgen.js';
 
+export const CINE_DUR = 27.4;       // kadr (badroom) davomiyligi = blood.mp3 (26.3 s) + qora parda
 export const P = { R: 0.32, EYE: 1.62, WALK: 2.7, RUN: 4.9, GHOST: 4.0, GHOST_RUN: 6.4, SEARCH: 1.5, DOOR_R: 1.9, SEND: 0.075, OBJ_R: 0.15 };
+export const BITE = { HP: 5, TIME: 14, CD: 60, FIRST: 45, PISTOL_AMMO: 8 };    // ruh 1 daqiqada bir marta tishlab oladi
+export const SNAKE = { CD: 60, FIRST: 20, RANGE: 16, RISE: 0.7, DRAG_ARMED: 1.8, DRAG: 3.0, TURN: 0.8, DIE: 1.3 };   // ruh 'T': ilon oyoqdan ushlab tortadi
 export const CHAR_PITCH = [1.35, 1.15, 0.6, 0.85, 0.7];
-const FLAG = { FLASH: 1, RUN: 2, DEAD: 4, INV: 8, ESC: 16, SEARCH: 32 };
+const FLAG = { FLASH: 1, RUN: 2, DEAD: 4, INV: 8, ESC: 16, SEARCH: 32, SCARED: 64 };
+const WEAPON_CODE = { hammer: 1, pistol: 2 }, WEAPON_NAME = [null, 'hammer', 'pistol'];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const r2 = v => Math.round(v * 100) / 100;
 
@@ -56,13 +60,17 @@ export class Sim {
     this.objs = this.map.throwables.map(t => ({ id: t.id, type: t.type, x: t.x, y: t.y, z: t.z, vx: 0, vy: 0, vz: 0, state: 'rest', holder: null, heldT: 0, report: false, near: false, restT: 0 }));
     this.blackoutUntil = 0; this.target = null; this.search = { c: -1, p: 0, snd: 0 };
     this.hitCd = new Map();
+    this.weps = (this.map.weapons || []).map(w => ({ id: w.id, type: w.type, x: w.x, z: w.z, by: null }));
+    this.bite = null; this.biteReadyAt = BITE.FIRST; this.stunT = 0;
+    this.snake = null; this.snakeReadyAt = SNAKE.FIRST; this.look = null;
+    this.cine = null; this.cineDone = false;
     this.fx.push({ t: 'start' });
     this.msg(`${this.cfg.name}`, 'title');
   }
   _mkPlayer(p, sp) {
     return { id: p.id, name: p.name, char: p.char | 0, role: p.role === 'ghost' ? 'ghost' : 'survivor', x: sp.x, z: sp.z, tx: sp.x, tz: sp.z, yaw: 0, pitch: 0, tyaw: 0, tpitch: 0,
       hearts: this.diff.hearts, alive: true, escaped: false, flash: true, running: false, inv: false, searching: false, vx: 0, vz: 0, stamina: 100, tired: false,
-      invuln: 0, held: -1, bob: 0, moving: false, lastStep: 0, grabCd: 0, sayCd: 0, local: p.id === this.myId, lastMsg: this.t };
+      invuln: 0, held: -1, weapon: null, ammo: 0, atkCd: 0, swingT: 0, bitten: false, snaked: false, bob: 0, moving: false, lastStep: 0, grabCd: 0, sayCd: 0, local: p.id === this.myId, lastMsg: this.t };
   }
   get isHost() { return this.hostId === this.myId; }
   get humanGhost() { return this.ghostOwner && this.players.has(this.ghostOwner) ? this.players.get(this.ghostOwner) : null; }
@@ -86,7 +94,8 @@ export class Sim {
         c.open = true; c.by = from;
         const who = this.players.get(from);
         const mc = this.map.cabinets[e.c];
-        this.fx.push({ t: 'cabOpen', id: e.c, x: mc.x, z: mc.z, key: c.hasKey });
+        this.fx.push({ t: 'cabOpen', id: e.c, x: mc.x, z: mc.z, rot: mc.rot, key: c.hasKey, self: from === this.myId });
+        if (me.role === 'survivor' && me.alive) { const dd = Math.hypot(mc.x - me.x, mc.z - me.z); if (dd < 7) { this.addFear(0.5 * (1 - dd / 7) + 0.2); this.shake = Math.max(this.shake, dd < 3 ? 1 : 0.5); } }
         if (c.hasKey && !this.keysFound.has(e.c)) {
           this.keysFound.add(e.c);
           this.fx.push({ t: 'chime', kind: 'key' });
@@ -101,6 +110,12 @@ export class Sim {
         }
         break;
       }
+      case 'cine': {            // birinchi ochilgan eshik: hamma o'yinchi kadrni (badroom) ko'radi
+        if (this.cine || this.cineDone) break;
+        this.cine = { t0: this.t, a: e.a, b: e.b }; this.cineDone = true;
+        this.fx.push({ t: 'cine', a: e.a, b: e.b });
+        break;
+      }
       case 'exitOpen': if (!this.exit.isOpen) { this.exit.isOpen = true; this.fx.push({ t: 'exitOpen', x: this.map.exit.x, z: this.map.exit.z }); this.msg('Chiqish eshigi ochildi! YUGURING!', 'good'); if (this.ai) this.ai.timer = Math.min(this.ai.timer, 4); } break;
       case 'esc': { const p = this.players.get(e.id); if (p && !p.escaped) { p.escaped = true; this.msg(`${p.name} qochib chiqdi!`, 'good'); if (p.local) this.fx.push({ t: 'chime', kind: 'win' }); } break; }
       case 'hit': {
@@ -108,7 +123,50 @@ export class Sim {
         else { const v = this.players.get(e.to); if (v) this.fx.push({ t: 'scream', x: v.x, z: v.z, p: CHAR_PITCH[v.char] || 1, v: 1 }); }
         break;
       }
-      case 'dead': { const p = this.players.get(e.id); if (p && p.alive) { p.alive = false; if (!p.local) this.msg(`${p.name} ruhga yem bo'ldi…`, 'scare'); } break; }
+      case 'dead': { const p = this.players.get(e.id); if (p && p.alive) { p.alive = false; if (!p.local) this.msg(`${p.name} ruhga yem bo'ldi…`, 'scare'); } if (this.bite && this.bite.to === e.id) this._endBite('dead'); if (this.snake && this.snake.to === e.id) { this.snake = null; if (p) p.snaked = false; if (p && p.local) this.look = null; } break; }
+      case 'wpick': {
+        const w = this.weps[e.w]; if (!w || (w.by && w.by !== from)) break;
+        const p = this.players.get(from); if (!p) break;
+        w.by = from; p.weapon = w.type; p.ammo = w.type === 'pistol' ? BITE.PISTOL_AMMO : 0;
+        if (p.local) { this.fx.push({ t: 'click' }); this.msg(w.type === 'hammer' ? "🔨 Bolg'a oldingiz — sichqonchaning chap tugmasi bilan uring" : "🔫 To'pponcha oldingiz — sichqonchaning chap tugmasi bilan o'q uzing", 'good'); }
+        break;
+      }
+      case 'atk': { const p = this.players.get(from); if (p) p.swingT = 0.4; this.fx.push({ t: 'atk', w: e.w, x: e.x, z: e.z, self: from === this.myId }); break; }
+      case 'bite': {
+        const v = this.players.get(e.to); if (!v || !v.alive || v.escaped || this.bite) break;
+        this.bite = { to: e.to, hp: BITE.HP, t: 0, bleed: 0 }; this.biteReadyAt = this.t + BITE.CD; this.ghost.visible = true;
+        if (this.ai) { this.ai.mode = 'bite'; this.ai.biteId = e.to; this.ai.biteT = 0; }
+        if (v.local) {
+          v.bitten = true; this.fear = 1; this.shake = 1.6;
+          this.fx.push({ t: 'bite', self: true }); this.fx.push({ t: 'splat', n: 6 }); this.fx.push({ t: 'flash', color: 'red', v: 1 });
+          this.msg(v.weapon ? 'RUH SIZNI TISHLADI! Sichqonchaning chap tugmasi bilan uring!' : "RUH SIZNI TISHLADI! Sheriklaringiz qutqarsin yoki qo'l bilan kurashing (chap tugma)!", 'scare');
+        } else { this.fx.push({ t: 'bite', x: v.x, z: v.z }); this.msg(`${v.name} ni ruh tishlab oldi! Qurol bilan qutqaring!`, 'scare'); }
+        break;
+      }
+      case 'snake': {
+        const v = this.players.get(e.to); if (!v || !v.alive || v.escaped || v.role !== 'survivor' || this.snake || this.bite) break;
+        this.snakeReadyAt = this.t + SNAKE.CD;
+        this.snake = { to: e.to, t: 0, yaw0: v.yaw, armed: !!v.weapon, dying: false, dieT: 0, struck: false, scr: 0 };
+        if (v.local) {
+          v.snaked = true; this.fear = 1; this.shake = 1.4; this.look = { yaw: v.yaw, pitch: 0, fall: 0 };
+          this.fx.push({ t: 'snake', self: true }); this.fx.push({ t: 'flash', color: 'red', v: 0.6 });
+          this.msg('ILON OYOG\'INGIZDAN USHLADI!', 'scare');
+        } else { this.fx.push({ t: 'snake', x: v.x, z: v.z }); this.msg(`${v.name} ni ilon oyog'idan tortyapti!`, 'scare'); }
+        break;
+      }
+      case 'snakeEnd': {
+        const sn = this.snake; if (!sn || sn.to !== e.to || sn.dying) break;
+        sn.dying = true; sn.dieT = 0;
+        const v = this.players.get(sn.to); if (v) v.snaked = false;
+        this.fx.push({ t: 'snakeEnd', x: this.snakePos(sn).x, z: this.snakePos(sn).z });
+        break;
+      }
+      case 'bhit': {
+        if (!this.bite) break;
+        this.bite.hp -= e.d; this.fx.push({ t: 'bhit', x: this.ghost.x, z: this.ghost.z, d: e.d });
+        if (this.bite.hp <= 0) this._endBite('freed');
+        break;
+      }
       case 'scream': this.fx.push({ t: 'scream', x: e.x, z: e.z, p: e.p || 1, v: 0.9 }); break;
       case 'say': {
         const d = Math.hypot(e.x - me.x, e.z - me.z);
@@ -139,21 +197,80 @@ export class Sim {
 
   addFear(v) { this.fear = clamp(this.fear + v, 0, 1); }
 
-  _takeHit() {
+  _freeze(sec = 5) { const me = this.me; me.frozen = sec; me.vx = me.vz = 0; this.msg(`Qo'rquvdan qotib qoldingiz… (${sec} s)`, 'scare'); }
+
+  _endBite(why) {
+    const b = this.bite; if (!b) return;
+    this.bite = null; this.biteReadyAt = this.t + BITE.CD;
+    const v = this.players.get(b.to); if (v) v.bitten = false;
+    if (this.ai) { this.ai.mode = 'retreat'; this.ai.retreatT = why === 'freed' ? 9 : 6; this.ai.visible = false; this.ai.biteId = null; this.ai.timer = this.ai.nextGap(); }
+    this.ghost.visible = false;
+    if (this.humanGhost && this.humanGhost.local && why === 'freed') this.stunT = 3.5;
+    if (why === 'freed') {
+      this.fx.push({ t: 'release', self: !!(v && v.local), x: this.ghost.x, z: this.ghost.z });
+      if (v && v.local) { v.invuln = 9; this.fear = 0.6; this.shake = 0.8; this.msg('Qutuldingiz! Qoching!', 'good'); }
+      else if (v) this.msg(`${v.name} qutqarildi! Ruh qochdi`, 'good');
+    }
+  }
+
+  // ilonning joyi: qurbonning orqasida (u tortilayotgan yo'nalishda)
+  snakePos(sn) {
+    const v = this.players.get(sn.to); if (!v) return { x: 0, z: 0, hx: 1, hz: 0 };
+    const bx = Math.sin(sn.yaw0), bz = Math.cos(sn.yaw0);
+    return { x: v.x + bx * 0.8, z: v.z + bz * 0.8, bx, bz };      // bosh shu nuqtada, tanasi orqasida
+  }
+
+  // Ilon qurbonni oyog'idan tortadi (orqaga), keyin qurbon o'girilib qo'lidagi narsa (yoki oyog'i) bilan uradi.
+  // Hammasi qurbonning o'z Sim'ida hisoblanadi (pozitsiya o'zi yuboradi); hamma uchun tugash 'snakeEnd' hodisasi bilan.
+  _updateSnake(dt) {
+    const sn = this.snake; if (!sn) return;
+    const v = this.players.get(sn.to);
+    if (!v || !v.alive || v.escaped) { this.snake = null; if (v && v.local) this.look = null; return; }
+    sn.t += dt;
+    if (sn.dying) { sn.dieT += dt; if (sn.dieT > SNAKE.DIE) { this.snake = null; if (v.local) this.look = null; } return; }
+    const dragEnd = SNAKE.RISE + (sn.armed ? SNAKE.DRAG_ARMED : SNAKE.DRAG), turnEnd = dragEnd + SNAKE.TURN;
+    sn.phase = sn.t < SNAKE.RISE ? 'rise' : sn.t < dragEnd ? 'drag' : sn.t < turnEnd ? 'turn' : 'strike';
+    if (sn.t > 9) { this.emit({ k: 'snakeEnd', to: sn.to }); return; }          // himoya: hech qachon osilib qolmasin
+    if (!v.local) return;
+    const sm = x => x * x * (3 - 2 * x), me = v;
+    me.vx = me.vz = 0; me.moving = false;
+    let yaw = sn.yaw0, pitch = 0, fall = 0;
+    if (sn.phase === 'rise') { const k = sn.t / SNAKE.RISE; pitch = 0.3 * k; fall = 0.5 * k; }
+    else if (sn.phase === 'drag') {
+      const k = Math.min(1, (sn.t - SNAKE.RISE) / 0.5), spd = 2.7 * sm(k);
+      const r = this.col.resolve(me.x + Math.sin(sn.yaw0) * spd * dt, me.z + Math.cos(sn.yaw0) * spd * dt, P.R); me.x = r.x; me.z = r.z;
+      pitch = 0.3 + 0.55 * sm(k); fall = 0.5 + 0.5 * sm(k); this.shake = Math.max(this.shake, 0.9);
+      sn.scr -= dt; if (sn.scr <= 0) { sn.scr = 0.45; this.fx.push({ t: 'drag', self: true }); }
+    } else {
+      const k = Math.min(1, (sn.t - dragEnd) / SNAKE.TURN), e = sm(k);
+      yaw = sn.yaw0 + Math.PI * e; pitch = 0.85 - 1.45 * e; fall = 1 - 0.25 * e; this.shake = Math.max(this.shake, 0.5);
+    }
+    me.yaw = yaw; me.pitch = pitch; this.look = { yaw, pitch, fall };
+    if (sn.phase === 'strike' && !sn.struck) {
+      sn.struck = true;
+      const w = me.weapon || 'kick';
+      if (w === 'pistol' && me.ammo > 0) me.ammo--;
+      this.emit({ k: 'atk', w: w === 'pistol' && me.ammo <= 0 && !sn.armed ? 'kick' : w, x: r2(me.x), z: r2(me.z) });
+      me.snaked = false; me.invuln = 6; this.fear = 0.6;
+      this.msg(me.weapon ? 'Ilonni urib qochdingiz!' : 'Ilonni tepib yubordingiz!', 'good');
+      this.emit({ k: 'snakeEnd', to: me.id }); this.look = null;
+    }
+  }
+
+  _takeHit() {          // ruh tegsa: jon ketmaydi, faqat qo'rquv va 5 soniya qotib qolish
     const me = this.me;
-    if (!me.alive || me.escaped || me.role !== 'survivor' || me.invuln > 0) return;
-    me.hearts--; me.invuln = 4; this.fear = 1; this.shake = 1;
+    if (!me.alive || me.escaped || me.role !== 'survivor' || me.invuln > 0 || me.snaked) return;
+    me.invuln = 9; this.fear = 1; this.shake = 1;
     this.fx.push({ t: 'scream', x: null, z: null, p: CHAR_PITCH[me.char] || 1, v: 1, self: true });
-    this.fx.push({ t: 'flash', color: 'red', v: 1 });
+    this.fx.push({ t: 'flash', color: 'red', v: 1 }); this.fx.push({ t: 'jump' });
     this.send({ t: 'ev', e: { k: 'scream', x: r2(me.x), z: r2(me.z), p: CHAR_PITCH[me.char] || 1 } });
-    if (me.hearts <= 0) { me.alive = false; this.msg('Ruh sizni tutdi…', 'scare'); this.emit({ k: 'dead', id: me.id }); }
-    else this.msg(`Ruh sizni ushladi! Yuraklar: ${me.hearts}`, 'scare');
+    this._freeze(5);
   }
 
   // ------------------------------------------------------------------ tarmoq
   handleNet(m) {
     switch (m.t) {
-      case 'st': { const p = this.players.get(m.id); if (!p || p.local) break; const s = m.s; p.tx = s[0]; p.tz = s[1]; p.tyaw = s[2]; p.tpitch = s[3]; const f = s[4] | 0; p.flash = !!(f & FLAG.FLASH); p.running = !!(f & FLAG.RUN); p.searching = !!(f & FLAG.SEARCH); if (f & FLAG.DEAD) p.alive = false; if (f & FLAG.ESC) p.escaped = true; p.inv = !!(f & FLAG.INV); p.hearts = s[5]; p.held = s[6] ?? -1; p.lastMsg = this.t;
+      case 'st': { const p = this.players.get(m.id); if (!p || p.local) break; const s = m.s; p.tx = s[0]; p.tz = s[1]; p.tyaw = s[2]; p.tpitch = s[3]; const f = s[4] | 0; p.flash = !!(f & FLAG.FLASH); p.running = !!(f & FLAG.RUN); p.searching = !!(f & FLAG.SEARCH); p.scared = !!(f & FLAG.SCARED); p.weapon = WEAPON_NAME[s[7] | 0] || null; if (f & FLAG.DEAD) p.alive = false; if (f & FLAG.ESC) p.escaped = true; p.inv = !!(f & FLAG.INV); p.hearts = s[5]; p.held = s[6] ?? -1; p.lastMsg = this.t;
         if (p.role === 'ghost') { this.ghost.tx = p.tx; this.ghost.tz = p.tz; this.ghost.yaw = p.tyaw + Math.PI; this.ghost.visible = !p.inv; this.ghost.chase = false; }
         break; }
       case 'gs': { if (m.id === this.myId) break; const s = m.s; this.ghost.tx = s[0]; this.ghost.tz = s[1]; this.ghost.yaw = s[2]; this.ghost.chase = !!s[4]; if (!this.humanGhost) this.ghost.visible = !!s[3]; break; }
@@ -161,6 +278,8 @@ export class Sim {
       case 'end': this.finish(!!m.win, m.msg, true); break;
       case 'left': {
         const p = this.players.get(m.id); if (!p) break;
+        if (this.bite && (this.bite.to === m.id || p.role === 'ghost')) this._endBite('dead');
+        if (this.snake && this.snake.to === m.id) this.snake = null;
         this.players.delete(m.id);
         this.msg(`${p.name} chiqib ketdi`, 'info');
         if (p.role === 'ghost') { this.ghostOwner = null; this.ghost.owner = null; this.ghost.visible = false; this._maybeSpawnAI(); if (this.ai) { this.ai.setPos(this.ghost.x, this.ghost.z); this.msg('Ruh endi o\'zi harakat qiladi', 'info'); } }
@@ -184,18 +303,24 @@ export class Sim {
   update(dt, inp) {
     dt = clamp(dt, 0, 0.05);
     this.t += dt;
+    if (!this.cineDone && !this.cine) this._startCine();
     const me = this.me;
-    me.yaw = inp.yaw; me.pitch = inp.pitch;
-    if (this.over) inp = { ...inp, mx: 0, mz: 0, hold: false, pressed: new Set() };
+    me.yaw = this.look ? this.look.yaw : inp.yaw; me.pitch = this.look ? this.look.pitch : inp.pitch;
+    me.frozen = Math.max(0, (me.frozen || 0) - dt);
+    if (this.cine && this.t - this.cine.t0 > CINE_DUR * 1.6) this.finishCine();         // himoya: hech qachon osilib qolmasin
+    if (this.over || this.cine) inp = { ...inp, mx: 0, mz: 0, run: false, hold: false, pressed: new Set() };
+    else if ((me.frozen > 0 || me.bitten || me.snaked) && me.role === 'survivor' && me.alive) inp = { ...inp, mx: 0, mz: 0, hold: false, run: false, pressed: new Set([...(inp.pressed || [])].filter(k => k === 'KeyF' || k === 'Mouse0' || k === 'KeyQ')) };
+    else if (me.role === 'ghost' && (this.stunT > 0 || this.bite)) inp = { ...inp, mx: 0, mz: 0, run: false, hold: false, pressed: new Set() };
+    this.stunT = Math.max(0, this.stunT - dt);
     this._updateLocal(dt, inp);
     this._updateRemotes(dt);
-    this._updateAI(dt);
+    if (!this.cine) { this._updateAI(dt); this._updateBite(dt); this._updateSnake(dt); }
     this._updateGhostEntity(dt);
     this._updateDoors(dt);
     this._updateObjs(dt);
     this._updateCabinets(dt);
     this._updateExit(dt);
-    this._updateFear(dt);
+    if (!this.cine) this._updateFear(dt);
     this._netSend(dt);
     if (!this.over) this._checkEnd(dt);
     this.shake = Math.max(0, this.shake - dt * 1.4);
@@ -204,7 +329,7 @@ export class Sim {
   _updateLocal(dt, inp) {
     const me = this.me;
     me.invuln = Math.max(0, me.invuln - dt);
-    me.grabCd = Math.max(0, me.grabCd - dt); me.sayCd = Math.max(0, me.sayCd - dt);
+    me.atkCd = Math.max(0, me.atkCd - dt); me.swingT = Math.max(0, me.swingT - dt); me.grabCd = Math.max(0, me.grabCd - dt); me.sayCd = Math.max(0, me.sayCd - dt);
     const free = me.role === 'ghost' || !me.alive || me.escaped;       // devordan o'tadi (tomoshabin)
     const fwdx = -Math.sin(me.yaw), fwdz = -Math.cos(me.yaw), rx = Math.cos(me.yaw), rz = -Math.sin(me.yaw);
     let want = 0, moving = false;
@@ -268,7 +393,14 @@ export class Sim {
       const ax = ex.x - ex.nx * 0.9, az = ex.z - ex.nz * 0.9, d = Math.hypot(ax - me.x, az - me.z);
       if (d < 2.4 && d < bd) { bd = d; best = { kind: 'exit' }; }
     }
+    if (!me.weapon && !me.bitten) for (const w of this.weps) {
+      if (w.by) continue;
+      const d = Math.hypot(w.x - me.x, w.z - me.z);
+      if (d < 1.5 && d < bd) { bd = d; best = { kind: 'wep', id: w.id, name: w.type }; }
+    }
     this.target = best;
+    if (best && best.kind === 'wep' && inp.pressed && inp.pressed.has('KeyE')) this.emit({ k: 'wpick', w: best.id });
+    this._attack(inp);
     const s = this.search;
     if (best && best.kind === 'cab' && inp.hold) {
       if (s.c !== best.id) { s.c = best.id; s.p = 0; }
@@ -287,6 +419,46 @@ export class Sim {
     }
   }
 
+  // chap tugma / Q: bolg'a bilan urish yoki to'pponcha otish. Ruh tishlab turgan paytdagina unga zarar yetadi
+  _attack(inp) {
+    const me = this.me, b = this.bite, g = this.ghost, P_ = inp.pressed;
+    if (!P_ || !(P_.has('Mouse0') || P_.has('KeyQ')) || me.atkCd > 0) return;
+    const victim = !!b && b.to === me.id;
+    if (!me.weapon) {
+      if (victim) { me.atkCd = 0.45; this.shake = Math.max(this.shake, 0.5); this.emit({ k: 'bhit', d: 0.4, by: me.id }); }
+      else this.msg("Qurol yo'q — bolg'a yoki to'pponcha toping", 'info');
+      return;
+    }
+    const dirx = -Math.sin(me.yaw), dirz = -Math.cos(me.yaw), dx = g.x - me.x, dz = g.z - me.z;
+    if (me.weapon === 'hammer') {
+      me.atkCd = 0.65; this.emit({ k: 'atk', w: 'hammer', x: r2(me.x), z: r2(me.z) });
+      const d = Math.hypot(dx, dz);
+      if (b && d < 2.6 && (d < 0.9 || (dx * dirx + dz * dirz) / (d || 1) > 0.35)) this.emit({ k: 'bhit', d: 1, by: me.id });
+    } else {
+      if (me.ammo <= 0) { me.atkCd = 0.4; this.fx.push({ t: 'click' }); this.msg("O'q tugadi!", 'warn'); return; }
+      me.ammo--; me.atkCd = 0.5; this.shake = Math.max(this.shake, 0.3); this.emit({ k: 'atk', w: 'pistol', x: r2(me.x), z: r2(me.z) });
+      const along = dx * dirx + dz * dirz;
+      if (b && along > 0.3 && along < 18 && Math.abs(dx * dirz - dz * dirx) < 0.7 && this.col.los(me.x, me.z, g.x, g.z, true)) this.emit({ k: 'bhit', d: 2, by: me.id });
+    }
+  }
+
+  // ruh tishlab turganda u qurbonning yuzi oldida turadi; 14 soniyada qutqarilmasa qurbon o'ladi
+  _updateBite(dt) {
+    const b = this.bite; if (!b) return;
+    const v = this.players.get(b.to);
+    if (!v || !v.alive || v.escaped) { this._endBite('dead'); return; }
+    b.t += dt;
+    const g = this.ghost, px = v.x - Math.sin(v.yaw) * 0.75, pz = v.z - Math.cos(v.yaw) * 0.75;
+    g.visible = true; g.chase = false; g.x = g.tx = px; g.z = g.tz = pz; g.yaw = Math.atan2(v.x - px, v.z - pz);
+    if (this.ai) { this.ai.x = px; this.ai.z = pz; this.ai.yaw = g.yaw; this.ai.visible = true; }
+    const hg = this.humanGhost; if (hg && hg.local) { hg.x = px; hg.z = pz; hg.vx = hg.vz = 0; }
+    if (v.local) {
+      b.bleed -= dt;
+      if (b.bleed <= 0) { b.bleed = 0.8; this.fx.push({ t: 'splat', n: 2 }); this.fx.push({ t: 'flash', color: 'red', v: 0.5 }); this.shake = Math.max(this.shake, 0.7); }
+      if (b.t >= BITE.TIME) { v.bitten = false; this.msg('Ruh sizni yemirib tashladi…', 'scare'); this.emit({ k: 'dead', id: v.id }); }
+    }
+  }
+
   _ghostPowers(dt, inp) {
     const me = this.me, g = this.ghost, P_ = inp.pressed || new Set();
     g.x = me.x; g.z = me.z;
@@ -296,6 +468,17 @@ export class Sim {
     g.visible = !me.inv;
     for (const code of Object.keys(HOTKEY_PHRASE)) {
       if (P_.has(code) && me.sayCd <= 0) { me.sayCd = 2.2; this.emit({ k: 'say', i: HOTKEY_PHRASE[code], x: r2(me.x), z: r2(me.z) }); }
+    }
+    // T — ilon: eng yaqin odamni oyog'idan ushlab tortadi (1 daqiqada bir marta)
+    if (P_.has('KeyT')) {
+      if (this.snake || this.bite) this.msg('Hozir bo\'lmaydi', 'info');
+      else if (this.t < this.snakeReadyAt) this.msg(`Ilon ${Math.ceil(this.snakeReadyAt - this.t)} s dan keyin tayyor`, 'info');
+      else {
+        let best = null, bd = SNAKE.RANGE;
+        for (const p of this.survivors()) { if (!p.alive || p.escaped) continue; const d = Math.hypot(p.x - me.x, p.z - me.z); if (d < bd) { bd = d; best = p; } }
+        if (best) { this.emit({ k: 'snake', to: best.id, by: me.id }); this.msg(`${best.name} ga ilon yubordingiz!`, 'info'); }
+        else this.msg(`Yaqinda odam yo'q (${SNAKE.RANGE} m ichida)`, 'info');
+      }
     }
     // R — narsani olish / otish
     if (P_.has('KeyR') && me.grabCd <= 0) {
@@ -321,6 +504,13 @@ export class Sim {
         else this.msg('Yaqin atrofda narsa yo\'q', 'info');
       }
     }
+    // Y — tishlash (faqat shu tugma bilan): yaqin odamni tishlab oladi
+    if (P_.has('KeyY') && g.visible && !this.bite && !this.snake && this.t >= this.biteReadyAt) {
+      for (const p of this.survivors()) {
+        if (!p.alive || p.escaped || p.invuln > 0) continue;
+        if (Math.hypot(p.x - g.x, p.z - g.z) < 1.4) { this.hitCd.set(p.id, this.t + 5); this.emit({ k: 'bite', to: p.id, by: me.id }); break; }
+      }
+    }
     // tegib ushlash
     if (g.visible) for (const p of this.survivors()) {
       if (!p.alive || p.escaped || p.invuln > 0) continue;
@@ -343,7 +533,7 @@ export class Sim {
       const sp = Math.hypot(p.x - ox, p.z - oz) / Math.max(dt, 1e-4);
       p.moving = sp > 0.5; p.speed = sp;
       if (p.moving && p.role === 'survivor') { p.bob += sp * dt * 1.9; p.lastStep = (p.lastStep || 0) + sp * dt; if (p.lastStep > (p.running ? 2.1 : 1.55)) { p.lastStep = 0; this.fx.push({ t: 'step', x: p.x, z: p.z, run: p.running }); } }
-      p.invuln = Math.max(0, p.invuln - dt);
+      p.invuln = Math.max(0, p.invuln - dt); p.swingT = Math.max(0, p.swingT - dt);
     }
   }
 
@@ -356,6 +546,8 @@ export class Sim {
       objs: () => this.objs,
       doorsNear: (x, z, r) => this.doors.filter(d => Math.hypot(d.x - x, d.z - z) < r),
       roomAt: (x, z) => roomAt(this.map, x, z),
+      biteReady: () => !this.bite && !this.snake && this.t >= this.biteReadyAt,
+      snakeReady: () => !this.bite && !this.snake && this.t >= this.snakeReadyAt,
     };
   }
   _updateAI(dt) {
@@ -389,6 +581,22 @@ export class Sim {
       d.creakT -= dt;
       if (prev < 0.05 && d.open >= 0.05 && d.creakT <= 0) { d.creakT = 2; this.fx.push({ t: 'creak', x: d.x, z: d.z, v: 0.4 }); }
     }
+  }
+
+  // o'yin boshlanishi bilan kadr (badroom): har bir o'yinchi uni o'z qurilmasida shu zahoti boshlaydi.
+  // Qahramonlar hamma uchun bir xil tanlanadi (identifikator bo'yicha tartiblangan birinchi ikki omon qolgan) — tarmoq hodisasi kerak emas.
+  _startCine() {
+    const sv = this.survivors().sort((a, b) => (a.id < b.id ? -1 : 1));
+    this.cine = { t0: this.t, a: sv[0] ? sv[0].id : null, b: sv[1] ? sv[1].id : null }; this.cineDone = true;
+    this.fx.push({ t: 'cine', a: this.cine.a, b: this.cine.b });
+  }
+  finishCine() {
+    if (!this.cine) return;
+    this.cine = null;
+    const me = this.me; me.invuln = Math.max(me.invuln, 4); me.vx = me.vz = 0;
+    if (this.ai) this.ai.timer = Math.max(this.ai.timer, 6);
+    this.ghost.visible = false; this.fear = 0; this.shake = 0;
+    this.fx.push({ t: 'cineEnd' });
   }
 
   _updateObjs(dt) {
@@ -446,7 +654,7 @@ export class Sim {
       this.jumpCd = this.t + 18;
       this.fx.push({ t: 'jump' }); this.fx.push({ t: 'scream', x: null, z: null, p: CHAR_PITCH[me.char] || 1, v: 1.2, self: true });
       this.fx.push({ t: 'stinger' }); this.fx.push({ t: 'flash', color: 'white', v: 0.9 });
-      this.fear = 1; this.shake = 1.6; this.scareCd = this.t + 6; this.lastSeenAt = this.t;
+      this.fear = 1; this.shake = 1.6; this.scareCd = this.t + 6; this.lastSeenAt = this.t; if (!(me.frozen > 0)) this._freeze(5);
       this.send({ t: 'ev', e: { k: 'scream', x: r2(me.x), z: r2(me.z), p: CHAR_PITCH[me.char] || 1 } });
       this.msg('RUH YAQIN!', 'scare');
     }
@@ -465,7 +673,7 @@ export class Sim {
         this.fx.push({ t: 'jump' });
         this.fx.push({ t: 'scream', x: null, z: null, p: CHAR_PITCH[me.char] || 1, v: 1, self: true });
         this.fx.push({ t: 'stinger' }); this.fx.push({ t: 'flash', color: 'white', v: 0.8 });
-        this.fear = 1; this.shake = 1;
+        this.fear = 1; this.shake = 1; if (!(me.frozen > 0)) this._freeze(5);
         this.send({ t: 'ev', e: { k: 'scream', x: r2(me.x), z: r2(me.z), p: CHAR_PITCH[me.char] || 1 } });
         this.msg('RUH!', 'scare');
       }
@@ -481,8 +689,8 @@ export class Sim {
     if (this.sendT < P.SEND) return;
     this.sendT = 0;
     const me = this.me;
-    const f = (me.flash && me.role === 'survivor' ? FLAG.FLASH : 0) | (me.running ? FLAG.RUN : 0) | (!me.alive ? FLAG.DEAD : 0) | (me.inv ? FLAG.INV : 0) | (me.escaped ? FLAG.ESC : 0) | (me.searching ? FLAG.SEARCH : 0);
-    this.send({ t: 'st', s: [r2(me.x), r2(me.z), r2(me.yaw), r2(me.pitch), f, me.hearts, me.held] });
+    const f = (me.flash && me.role === 'survivor' ? FLAG.FLASH : 0) | (me.running ? FLAG.RUN : 0) | (!me.alive ? FLAG.DEAD : 0) | (me.inv ? FLAG.INV : 0) | (me.escaped ? FLAG.ESC : 0) | (me.searching ? FLAG.SEARCH : 0) | ((me.frozen > 0 || me.bitten || me.snaked) && me.role === 'survivor' ? FLAG.SCARED : 0);
+    this.send({ t: 'st', s: [r2(me.x), r2(me.z), r2(me.yaw), r2(me.pitch), f, me.hearts, me.held, WEAPON_CODE[me.weapon] || 0] });
     if (this.ai) { const s = this.ai.state(); this.send({ t: 'gs', s: [r2(s[0]), r2(s[1]), r2(s[2]), s[3], s[4]] }); }
   }
 

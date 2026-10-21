@@ -1,0 +1,25 @@
+<!doctype html><html><body style="margin:0;background:#222"><canvas id=c width=1400 height=700></canvas>
+<script type="importmap">{ "imports": { "three": "/three/build/three.module.js", "three/addons/": "/three/examples/jsm/" } }</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+const q = new URLSearchParams(location.search);
+const r = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true });
+const s = new THREE.Scene(); s.background = new THREE.Color(0x303038);
+s.add(new THREE.HemisphereLight(0xffffff, 0x444455, 2.2));
+const l = new GLTFLoader(); l.setMeshoptDecoder(MeshoptDecoder);
+const g = await l.loadAsync('/horror/models/badroom.glb'); s.add(g.scene);
+const b = new THREE.Box3().setFromObject(g.scene);
+const cam = new THREE.PerspectiveCamera(60, 2, 0.05, 80);
+const v = q.get('v') || 'top';
+if (v === 'ortho') { const c = new THREE.OrthographicCamera(-12, 12, 6, -6, 0.1, 50); c.position.set(0, 20, 0); c.up.set(0, 0, -1); c.lookAt(0, 0, 0); s.add(new THREE.GridHelper(12, 12, 0xff0000, 0xffff00)); s.children[s.children.length-1].position.y = 2; window.__c = c; }
+if (v === 'top') { cam.position.set(0, 18, 0.01); cam.lookAt(0, 0, 0); cam.fov = 40; }
+else if (v === 'cut') { cam.position.set(0, 12, 14); cam.lookAt(0, 1, 0); cam.fov = 50; }
+else if (v === 'c') { const [x,y,z,tx,ty,tz] = q.get('c').split(',').map(Number); cam.position.set(x,y,z); cam.lookAt(tx,ty,tz); }
+if (q.get('cut')) { const h = +q.get('cut'); s.traverse(o => { if (o.isMesh) { o.geometry.computeBoundingBox(); const bb = o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld); if (bb.min.y > h) o.visible = false; } }); }
+cam.updateProjectionMatrix();
+r.render(s, window.__c || cam);
+// ceiling hide for top
+window.__done = window.__done || b.min.toArray().concat(b.max.toArray()).map(x => +x.toFixed(2));
+</script></body></html>

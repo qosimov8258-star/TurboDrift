@@ -1,11 +1,12 @@
 // HUD: DOM yangilanishlari (faqat o'zgarganda yoziladi).
 import * as THREE from 'three';
 import { LEVELS } from './levels.js';
+import { BITE } from './sim.js';
 
 const $ = id => document.getElementById(id);
 export class Hud {
   constructor() {
-    this.el = { hud: $('hzHud'), vig: $('hzVig'), flash: $('hzFlash'), lvl: $('hzLvl'), obj: $('hzObj'), time: $('hzTime'), players: $('hzPlayers'), msgs: $('hzMsgs'), sub: $('hzSub'), prompt: $('hzPrompt'), promptTxt: $('hzPromptTxt'), promptFill: $('hzPromptFill'), hearts: $('hzHearts'), stam: $('hzStam'), help: $('hzHelp'), gp: $('hzGhostPanel'), inv: $('hzInvTxt'), marks: $('hzMarks'), dead: $('hzDead'), intro: $('hzIntro'), touch: $('hzTouch') };
+    this.el = { hud: $('hzHud'), vig: $('hzVig'), flash: $('hzFlash'), lvl: $('hzLvl'), obj: $('hzObj'), time: $('hzTime'), players: $('hzPlayers'), msgs: $('hzMsgs'), sub: $('hzSub'), prompt: $('hzPrompt'), promptTxt: $('hzPromptTxt'), promptFill: $('hzPromptFill'), hearts: $('hzHearts'), stam: $('hzStam'), help: $('hzHelp'), gp: $('hzGhostPanel'), blood: $('hzBlood'), wep: $('hzWep'), biteTxt: $('hzBiteTxt'), snakeTxt: $('hzSnakeTxt'), inv: $('hzInvTxt'), marks: $('hzMarks'), dead: $('hzDead'), intro: $('hzIntro'), touch: $('hzTouch') };
     this.cache = {}; this.subT = 0; this.markPool = []; this.pT = 0;
     this._v = new THREE.Vector3();
   }
@@ -18,13 +19,26 @@ export class Hud {
     clearTimeout(this._it); this._it = setTimeout(() => this.el.intro.classList.add('hidden'), 5600);
     const ghost = sim.me.role === 'ghost';
     this.el.gp.classList.toggle('hidden', !ghost);
-    this.el.help.innerHTML = ghost ? '' : '<kbd>WASD</kbd> yurish · <kbd>Shift</kbd> yugurish<br><kbd>E</kbd> ushlab turing — shkafni qidirish<br><kbd>F</kbd> fanar · <kbd>M</kbd> ovoz';
-    this.el.hearts.style.display = ghost ? 'none' : ''; this.el.stam.parentElement.style.display = ghost ? 'none' : '';
+    this.el.help.innerHTML = ghost ? '' : '<kbd>WASD</kbd> yurish · <kbd>Shift</kbd> yugurish<br><kbd>E</kbd> ushlab turing — shkafni qidirish · <kbd>E</kbd> bosing — qurol olish<br><kbd>Sichqoncha chap</kbd> — urish / otish<br><kbd>F</kbd> fanar · <kbd>M</kbd> ovoz';
+    this.el.hearts.style.display = 'none'; this.el.stam.parentElement.style.display = ghost ? 'none' : '';
     $('tBtnsS').classList.toggle('hidden', ghost); $('tBtnsG').classList.toggle('hidden', !ghost);
     this.map = null; $('hzMap').classList.add('hidden');
+    this.el.blood.innerHTML = ''; this.el.blood.classList.remove('on'); this.el.wep.textContent = '';
     this.el.dead.classList.add('hidden'); this.el.marks.innerHTML = ''; this.markPool = [];
     this.el.vig.style.setProperty('--fear', 0);
     if (sim.level === 0 && !ghost) setTimeout(() => this.msg('Maslahat: ruhni ko\'rsangiz — qoching va burilishlarda eshiklarni yoping', 'info'), 7000);
+  }
+  // qon dog'lari: ekranga tasodifiy joyga sachraydi va sekin quriydi
+  splat(n = 2) {
+    const box = this.el.blood;
+    for (let i = 0; i < n; i++) {
+      const d = document.createElement('div'), sz = 70 + Math.random() * 230, x = Math.random() * 100, y = Math.random() * 100;
+      d.className = 'splat'; d.style.cssText = `left:${x}%;top:${y}%;width:${sz}px;height:${sz * (0.7 + Math.random() * 0.6)}px;transform:translate(-50%,-50%) rotate(${Math.random() * 360}deg) scale(.2);border-radius:${40 + Math.random() * 20}% ${40 + Math.random() * 20}% ${40 + Math.random() * 20}% ${40 + Math.random() * 20}%`;
+      box.appendChild(d);
+      requestAnimationFrame(() => requestAnimationFrame(() => { d.style.transform = d.style.transform.replace('scale(.2)', 'scale(1)'); d.style.opacity = 1; }));
+      setTimeout(() => { d.style.opacity = 0; }, 3800 + Math.random() * 1500); setTimeout(() => d.remove(), 7500);
+    }
+    while (box.children.length > 16) box.firstChild.remove();
   }
   hide() { this.el.hud.classList.add('hidden'); this.el.intro.classList.add('hidden'); this.el.vig.style.setProperty('--fear', 0); }
   msg(text, kind = 'info') {
@@ -49,17 +63,23 @@ export class Hud {
     });
     // yuraklar / stamina
     if (me.role === 'survivor') {
-      this.set('hearts', me.hearts + '/' + (sim.diff.hearts), () => { let h = ''; for (let i = 0; i < sim.diff.hearts; i++) h += i < me.hearts ? '❤️' : '🖤'; e.hearts.textContent = h; });
+      const bt = me.bitten && sim.bite ? Math.max(0, Math.ceil(BITE.TIME - sim.bite.t)) : -1;
+      this.set('frz', bt >= 0 ? 'b' + bt : me.frozen > 0 ? Math.ceil(me.frozen) : 0, v => { e.hearts.style.display = ''; e.hearts.textContent = bt >= 0 ? `🩸 Tishlandi! ${bt} s — uring!` : v ? `❄ Qotib qoldingiz: ${v}` : ''; });
+      this.set('wep', (me.weapon || '') + me.ammo, () => { e.wep.textContent = me.weapon === 'hammer' ? "🔨 Bolg'a" : me.weapon === 'pistol' ? `🔫 To'pponcha · ${me.ammo}` : ''; });
       this.set('stam', Math.round(me.stamina / 4), () => { e.stam.style.width = me.stamina + '%'; e.stam.style.background = me.tired ? '#c0392b' : '#c9c28a'; });
     }
     // nishon
     let prompt = null, prog = 0;
     if (me.role === 'survivor' && me.alive && !me.escaped && sim.target) {
       if (sim.target.kind === 'cab') { prompt = `<b>E</b> ni ushlab turing — ${sim.target.name === 'locker' ? 'shkafchani' : sim.target.name === 'dresser' ? 'tumbochkani' : 'shkafni'} qidirish`; prog = sim.search.p; }
+      else if (sim.target.kind === 'wep') prompt = `<b>E</b> — ${sim.target.name === 'hammer' ? "bolg'ani" : "to'pponchani"} olish`;
       else if (sim.target.kind === 'exit') prompt = found >= need ? '<b>E</b> — chiqish eshigini ochish' : `Eshik qulflangan 🔒 (${found}/${need} kalit)`;
     }
     this.set('prompt', prompt, v => { e.prompt.classList.toggle('hidden', !v); if (v) e.promptTxt.innerHTML = v; });
     if (prompt) e.promptFill.style.width = Math.round(prog * 100) + '%';
+    this.set('bloodOn', !!(sim.bite && sim.bite.to === me.id && me.alive), v => e.blood.classList.toggle('on', v));
+    if (me.role === 'ghost') this.set('biteTxt', sim.bite ? 'b' : Math.max(0, Math.ceil(sim.biteReadyAt - sim.t)), v => { e.biteTxt.innerHTML = v === 'b' ? '🩸 Tishlab turibsiz…' : v > 0 ? `🦷 Tishlash ${v} s dan keyin` : '🦷 <b style="color:#ff8a80">TISHLASH TAYYOR</b> — odamga yaqinlashib <b>Y</b> bosing'; });
+    if (me.role === 'ghost') this.set('snakeTxt', sim.snake ? 's' : Math.max(0, Math.ceil(sim.snakeReadyAt - sim.t)), v => { e.snakeTxt.innerHTML = v === 's' ? '🐍 Ilon ishlayapti…' : v > 0 ? `<kbd>T</kbd> 🐍 Ilon ${v} s dan keyin` : '<kbd>T</kbd> 🐍 <b style="color:#9fe89f">ILON TAYYOR</b> — yaqin odamni oyog\'idan tortadi'; });
     // ruh paneli
     if (me.role === 'ghost') this.set('inv', me.inv, () => { e.inv.innerHTML = me.inv ? 'ko\'rinish (hozir <b style="color:#9cc2ff">KO\'RINMASSIZ</b>)' : 'ko\'rinmas bo\'lish (hozir <b style="color:#ff8a80">KO\'RINASIZ</b>)'; });
     // o'yinchilar ro'yxati (sekin)
@@ -70,7 +90,7 @@ export class Hud {
       this.set('plist', key, () => {
         e.players.innerHTML = '';
         for (const p of sim.players.values()) {
-          const d = document.createElement('div'); d.textContent = (p.role === 'ghost' ? '👻 ' : p.escaped ? '🚪 ' : p.alive ? '' : '💀 ') + p.name + (p.role === 'survivor' && p.alive && !p.escaped ? '  ' + '♥'.repeat(Math.max(0, p.hearts)) : '');
+          const d = document.createElement('div'); d.textContent = (p.role === 'ghost' ? '👻 ' : p.escaped ? '🚪 ' : p.alive ? '' : '💀 ') + p.name;
           d.className = p.role === 'ghost' ? 'gh' : p.escaped ? 'esc' : !p.alive ? 'dead' : ''; e.players.appendChild(d);
         }
       });

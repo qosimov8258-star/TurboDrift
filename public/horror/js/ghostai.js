@@ -52,6 +52,7 @@ export class GhostAI {
         else { // aylanib yuradi
           const a = Math.atan2(toZ, toX) + dt * 0.35; this.x = near.x - Math.cos(a) * want; this.z = near.z - Math.sin(a) * want; face(toX, toZ);
         }
+        if (ctx.biteReady && ctx.biteReady() && this.t > 20 && this.timer > 8) this.timer = 8;     // tishlash vaqti keldi
         this.timer -= dt;
         if (this.timer <= 0) this.pickEvent(near, S, nd, ctx);
         break;
@@ -64,11 +65,20 @@ export class GhostAI {
         for (const p of S) {
           if (Math.hypot(p.x - this.x, p.z - this.z) < 0.95 && (this.hitCd.get(p.id) || 0) <= 0) {
             this.hitCd.set(p.id, 6);
+            if (ctx.biteReady && ctx.biteReady()) {       // 1 daqiqada bir marta: tishlab oladi
+              this.mode = 'bite'; this.biteId = p.id; this.biteT = 0; this.visible = true;
+              ctx.emit({ k: 'bite', to: p.id, by: 'ai' }); break;
+            }
             ctx.emit({ k: 'hit', to: p.id, by: 'ai' });
             this.mode = 'retreat'; this.retreatT = 6 + this.rng.range(0, 3); this.visible = false; break;
           }
         }
         if (this.mode === 'chase' && this.chaseT <= 0) { this.mode = 'stalk'; this.visible = false; this.timer = this.nextGap(); ctx.emit({ k: 'vanish' }); }
+        break;
+      }
+      case 'bite': {        // joyi Sim._updateBite da qurbon oldiga mahkamlanadi; qutqarilmasa o'zi ham chiqib ketadi
+        this.visible = true; this.biteT = (this.biteT || 0) + dt;
+        if (this.biteT > 25) { this.mode = 'retreat'; this.retreatT = 5; this.visible = false; }
         break;
       }
       case 'stare': {
@@ -95,6 +105,8 @@ export class GhostAI {
   pickEvent(near, S, nd, ctx) {
     const r = this.rng.next();
     this.timer = this.nextGap();
+    if (ctx.snakeReady && ctx.snakeReady() && nd < 14 && this.t > 15 && this.rng.chance(0.7)) { ctx.emit({ k: 'snake', to: near.id, by: 'ai' }); this.timer = this.nextGap() * 0.6; return; }
+    if (ctx.biteReady && ctx.biteReady() && this.t > 20) return this.appear(near, ctx, true);
     const room = ctx.roomAt ? ctx.roomAt(near.x, near.z) : -1;
     if (r < 0.34) return this.appear(near, ctx);
     if (r < 0.50) return this.stare(near, ctx);
@@ -116,7 +128,7 @@ export class GhostAI {
     if (r < 0.93) { ctx.emit({ k: 'blackout', dur: 3 + this.rng.range(0, 3) }); return; }
     ctx.emit({ k: 'sfx', n: this.rng.pick(['creak', 'knock', 'bell', 'whisper', 'growl']), x: near.x + this.rng.range(-8, 8), z: near.z + this.rng.range(-8, 8) });
   }
-  appear(near, ctx) {
+  appear(near, ctx, hunt = false) {
     // nishon ko'rish yo'nalishida, ko'rinish chizig'ida paydo bo'ladi
     let best = null;
     for (let i = 0; i < 16; i++) {
@@ -127,7 +139,7 @@ export class GhostAI {
       if (!best) best = { x, z };
     }
     if (!best) return;
-    this.x = best.x; this.z = best.z; this.visible = true; this.mode = 'chase'; this.chaseT = 3.2 + this.rng.range(0, 3);
+    this.x = best.x; this.z = best.z; this.visible = true; this.mode = 'chase'; this.chaseT = 3.2 + this.rng.range(0, 3) + (hunt ? 6 : 0);
     this.yaw = Math.atan2(near.x - this.x, near.z - this.z);
     ctx.emit({ k: 'appear', x: this.x, z: this.z, yaw: this.yaw });
   }

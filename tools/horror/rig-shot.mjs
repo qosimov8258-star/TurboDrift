@@ -1,0 +1,11 @@
+import { chromium } from 'playwright';
+import { createStatic, attachGameServer } from '../../server.js';
+const [qs, out] = process.argv.slice(2);
+const srv = createStatic(3293); attachGameServer(srv); await new Promise(r => srv.listen(3293, r));
+const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const p = await b.newPage({ viewport: { width: 1600, height: 420 } });
+p.on('pageerror', e => console.log('[pageerror]', e.message)); p.on('console', m => { if (m.type() === 'error') console.log('[console]', m.text()); });
+await p.goto('http://localhost:3293/tools/horror/rig-test.html?' + qs);
+await p.waitForFunction('window.__done', null, { timeout: 60000 }).catch(() => console.log('timeout'));
+console.log(await p.evaluate(() => window.__done));
+await p.screenshot({ path: out }); await b.close(); srv.close(); process.exit(0);

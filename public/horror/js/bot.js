@@ -80,10 +80,39 @@ export class Bot {
     const pressed = new Set();
     let mx = 0, mz = 0, hold = false, run = false;
     if (me.role === 'ghost') return this.ghostStep(dt, pressed);
+    if (sim.cine) { this.stuckT = 0; this.stuckCount = 0; this.lastPos = [me.x, me.z]; return { mx: 0, mz: 0, yaw: this.yaw, pitch: 0, run: false, hold: false, pressed }; }      // kadr paytida kutadi
+    if (me.frozen > 0) { this.stuckT = 0; this.lastPos = [me.x, me.z]; }
     if (!me.alive || me.escaped) return { mx: 0, mz: 0, yaw: me.yaw, pitch: 0, run: false, hold: false, pressed };
+    // ruh kimnidir tishlagan: qurol bilan qutqarish (yoki o'zi tishlangan bo'lsa — qarshilik)
+    const bite = sim.bite, gh0 = sim.ghost;
+    if (bite) {
+      const victim = bite.to === me.id, dx = gh0.x - me.x, dz = gh0.z - me.z, dg = Math.hypot(dx, dz);
+      const reach = me.weapon === 'pistol' ? 6 : 1.6;
+      if (victim || (me.weapon && dg < reach && sim.col.los(me.x, me.z, gh0.x, gh0.z, true))) {
+        if (dg > 0.2) this.yaw = Math.atan2(-dx, -dz);
+        this.atkT = (this.atkT || 0) - dt;
+        if (this.atkT <= 0) { this.atkT = 0.3; pressed.add('Mouse0'); }
+        return { mx: 0, mz: 0, yaw: this.yaw, pitch: 0, run: false, hold: false, pressed };
+      }
+      if (me.weapon && !victim) {
+        if (!this.goal || this.goal.tag !== 'rescue' || this.rescueT <= 0) { this.setGoal(gh0.x, gh0.z, 'rescue'); this.rescueT = 1; }
+        this.rescueT -= dt;
+      }
+    } else if (this.goal && this.goal.tag === 'rescue') this.goal = null;
+    // qurol olish: yaqin (25 m gacha) bo'sh qurol bo'lsa
+    if (!me.weapon && !bite) {
+      if (this.goal && this.goal.tag === 'wep' && sim.weps[this.goal.id].by) this.goal = null;
+      if (!this.goal || this.goal.tag !== 'wep') {
+        let bw = null, bd2 = 25;
+        for (const w of sim.weps) { if (w.by || this.skip.has('w' + w.id)) continue; const d = Math.hypot(w.x - me.x, w.z - me.z); if (d < bd2) { bd2 = d; bw = w; } }
+        if (bw) { this.setGoal(bw.x, bw.z, 'wep'); this.goal.id = bw.id; }
+      }
+    }
+    if (me.weapon && this.goal && this.goal.tag === 'wep') this.goal = null;
     // maqsad tanlash
     const need = sim.keysFound.size >= sim.need;
-    if (need && sim.exit.isOpen) {
+    if (this.goal && (this.goal.tag === 'wep' || this.goal.tag === 'rescue')) { /* maxsus maqsad */ }
+    else if (need && sim.exit.isOpen) {
       const ex = map.exit;
       if (!this.goal || this.goal.tag !== 'out') this.setGoal(ex.x + ex.nx * 1.6, ex.z + ex.nz * 1.6, 'out');
     } else if (need) {
@@ -102,7 +131,10 @@ export class Bot {
     const g = this.goal;
     if (g) {
       const dg = Math.hypot(g.x - me.x, g.z - me.z);
-      if (g.tag === 'cab' && dg < 0.5) {
+      if (g.tag === 'wep' && dg < 0.8) {
+        pressed.add('KeyE'); this.holdT += dt; if (this.holdT > 1.5) { this.skip.add('w' + g.id); this.goal = null; this.holdT = 0; }
+        if (me.weapon) this.goal = null;
+      } else if (g.tag === 'cab' && dg < 0.5) {
         const c = map.cabinets[g.id]; this.yaw = Math.atan2(-(c.x - me.x), -(c.z - me.z)); hold = true;       // shkafga qaraydi
         if (sim.cabs[g.id].open) this.goal = null;
       } else if (g.tag === 'exit' && dg < 0.6) {
@@ -116,7 +148,8 @@ export class Bot {
       } else { this.replan -= dt; if (this.replan <= 0) { this.replan = 1; this.path = this.plan(g.x, g.z); this.pi = 0; if (!this.path && g.tag === 'cab') { this.skip.add(g.id); this.goal = null; } } }
       // tiqilib qolishni tekshirish
       this.stuckT += dt;
-      if (this.stuckT > 2) { const moved = Math.hypot(me.x - this.lastPos[0], me.z - this.lastPos[1]); this.lastPos = [me.x, me.z]; this.stuckT = 0; if (moved < 0.3 && !hold && !(g.tag === 'exit' && dg < 0.8)) { this.stuckCount = (this.stuckCount || 0) + 1; this.setGoal(g.x, g.z, g.tag); if (g.tag === 'cab') this.goal.id = g.id; if (this.stuckCount > 6 && g.tag === 'cab') { this.skip.add(g.id); this.goal = null; this.stuckCount = 0; } } }
+      if (this.stuckT > 2) { const moved = Math.hypot(me.x - this.lastPos[0], me.z - this.lastPos[1]); this.lastPos = [me.x, me.z]; this.stuckT = 0; if (moved < 0.3 && !hold && !(g.tag === 'exit' && dg < 0.8)) {
+        if (g.tag === 'wep') { this.skip.add('w' + g.id); this.goal = null; this.stuckCount = 0; } else { this.stuckCount = (this.stuckCount || 0) + 1; this.setGoal(g.x, g.z, g.tag); if (g.tag === 'cab') this.goal.id = g.id; if (this.stuckCount > 6 && g.tag === 'cab') { this.skip.add(g.id); this.goal = null; this.stuckCount = 0; } } } }
     } else {
       // maqsad yo'q: aylanib yuramiz
       this.wander -= dt; if (this.wander <= 0) { this.wander = 2; this.yaw += this.rng() * 2 - 1; }
@@ -142,6 +175,7 @@ export class Bot {
       else if (this.rng() < 0.5) pressed.add('KeyR');
     }
     if (nd < 6 && me.inv && this.rng() < 0.05) pressed.add('KeyE');
+    if (this.rng() < 0.01) pressed.add('KeyT');
     return { mx: 0, mz: nd > 0.5 ? 1 : 0, yaw: this.yaw, pitch: -0.1, run: nd > 8, hold: false, pressed };
   }
 }

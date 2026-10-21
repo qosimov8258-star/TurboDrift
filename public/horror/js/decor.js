@@ -245,6 +245,17 @@ export function buildLevel(seed, levelIndex) {
     i++;
   }
 
+  // ---- qurollar: bolg'a va to'pponcha (ruh tishlaganda qutqarish uchun). Bittasi start xonasi yonida
+  const weapons = [];
+  for (let i = 0, t = 0; i < 6 && t < 400; t++) {
+    const pool = i < 2 ? map.rooms.filter(r => r.dist <= 1) : map.rooms;
+    const room = pool[rng.int(0, pool.length - 1)] || map.rooms[0];
+    const x = (room.x + rng.range(0.5, room.w - 0.5)) * CELL, z = (room.y + rng.range(0.5, room.h - 0.5)) * CELL;
+    if (inCollider(map, x, z, 0.45) || weapons.some(w => Math.hypot(w.x - x, w.z - z) < 3)) continue;
+    weapons.push({ id: i, type: i % 2 ? 'pistol' : 'hammer', x, z, room: room.id });
+    i++;
+  }
+
   // ---- spawn nuqtalari (start xonasi markazi)
   const spawn = [];
   for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; spawn.push({ x: (scx + 0.5) * CELL + Math.cos(a) * (i ? 0.85 : 0), z: (scy + 0.5) * CELL + Math.sin(a) * (i ? 0.85 : 0) }); }
@@ -254,7 +265,7 @@ export function buildLevel(seed, levelIndex) {
   // ---- hamma kollayderlar (devorlar + buyumlar)
   const colliders = [...map.walls, ...C.colliders];
   return {
-    ...map, geo, glow, cabinets, throwables, spawn, colliders, ghostStart: { x: gr.cx, z: gr.cz },
+    ...map, geo, glow, cabinets, throwables, weapons, spawn, colliders, ghostStart: { x: gr.cx, z: gr.cz },
     ctx: undefined, bounds: { x0: 0, z0: 0, x1: map.sizeX, z1: map.sizeZ },
   };
 }

@@ -148,3 +148,25 @@ input:focus { border-color: var(--blood2); box-shadow: 0 0 10px rgba(200, 20, 20
 
 #hzStartBtn { opacity: 0; pointer-events: none; transition: opacity 1.2s; }
 #hzStartBtn.show { opacity: 1; pointer-events: auto; }
+
+/* qo'rquvdan ko'zni yumish */
+#hzLids { position: fixed; inset: 0; pointer-events: none; z-index: 6; }
+#hzLids i { position: absolute; left: 0; right: 0; height: 51%; background: #000; transition: transform .35s ease-in; }
+#hzLids i:first-child { top: 0; transform: translateY(-100%); }
+#hzLids i:last-child { bottom: 0; transform: translateY(100%); }
+#hzLids.closed i { transform: none; }
+
+/* ruh tishlaganda: qizil ekran va qon sachrashi */
+#hzBlood { position: fixed; inset: 0; pointer-events: none; z-index: 8; overflow: hidden; }
+#hzBlood.on { background: radial-gradient(ellipse at center, rgba(120,0,0,.12) 20%, rgba(150,0,0,.62) 70%, rgba(70,0,0,.9) 100%); animation: bleed 1.1s ease-in-out infinite; }
+@keyframes bleed { 50% { filter: brightness(1.5); } }
+#hzBlood .splat { position: absolute; opacity: 0; transition: transform .25s cubic-bezier(.1,.8,.3,1), opacity 1.6s; background: radial-gradient(circle at 40% 40%, #c20d0d 0, #8a0505 45%, rgba(90,0,0,.9) 62%, rgba(60,0,0,0) 72%); box-shadow: 0 0 22px rgba(120,0,0,.7); }
+#hzWep { font-size: 16px; text-shadow: 0 1px 4px #000; margin-bottom: 2px; letter-spacing: 1px; }
+
+/* kadr (badroom): qora parda + kinematografik chiziqlar, HUD yashiriladi */
+#hzFade { position: fixed; inset: 0; pointer-events: none; z-index: 9; background: #000; opacity: 0; }
+#hzBars { position: fixed; inset: 0; pointer-events: none; z-index: 8; }
+#hzBars i { position: absolute; left: 0; right: 0; height: 0; background: #000; transition: height .9s ease; }
+#hzBars i:first-child { top: 0; } #hzBars i:last-child { bottom: 0; }
+#hzBars.on i { height: 11vh; }
+body.cine #hzHud, body.cine #hzBlood, body.cine #hzLids { visibility: hidden; }

@@ -1,6 +1,7 @@
 // Ovoz tizimi: WebAudio sintezi (baqiriq, g'ichirlash, yurak urishi...), fazoviy ovoz,
 // musiqa: start (menyu), room1-3 (har bir xonaga), all* (hamma xonalarga har 20 soniyada aralashtiriladi), ruh ovozi (TTS).
 import { Rng, hash32 } from './rng.js';
+import { envelopeFrom } from './cine.js';
 
 const FILES = '/horror-files/music/';
 export const ROOM_TRACKS = ['room1.mp3', 'room2.mp3', 'room3.mp3'];
@@ -37,6 +38,8 @@ export class HAudio {
     const d = this.noiseBuf.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
     this.ready = true;
     this._loadScreams();
+    this._loadBat();
+    this._loadBlood();
     if (this.tts.ok) { const pick = () => { const vs = speechSynthesis.getVoices(); if (!vs.length) return; for (const p of ['uz', 'tr', 'az', 'kk', 'ru', 'en']) { const v = vs.find(v => v.lang.toLowerCase().startsWith(p)); if (v) { this.tts.voice = v; this.tts.lang = p; return; } } }; pick(); speechSynthesis.onvoiceschanged = pick; }
     if (this.menuWanted) this.startMenu();
   }
@@ -46,6 +49,111 @@ export class HAudio {
       const list = await (await fetch('/horror-list')).json();
       for (const f of list) { try { const r = await fetch(FILES + 'uchratsa/' + encodeURIComponent(f)); this.screams.push(await this.ctx.decodeAudioData(await r.arrayBuffer())); } catch (e) { /* bu fayl ochilmadi */ } }
     } catch (e) { /* ro'yxat yo'q — sintez ishlatiladi */ }
+  }
+  drip(vol = 0.5) {           // qon tomchisi: qisqa "plop" + ho'l shapillash
+    if (!this.ready) return;
+    const ctx = this.ctx, t = ctx.currentTime, f = 900 + Math.random() * 500, o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * 0.3, t + 0.07);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.16 * vol, t + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
+    o.connect(g); g.connect(this.sfx); g.connect(this.reverb); o.start(t); o.stop(t + 0.14);
+    const n = this._noise(0.08, t), bp = ctx.createBiquadFilter(), ng = ctx.createGain(); bp.type = 'bandpass'; bp.frequency.value = 2200; bp.Q.value = 1.2;
+    ng.gain.setValueAtTime(0.05 * vol, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.07); n.connect(bp); bp.connect(ng); ng.connect(this.sfx);
+  }
+  zap() {                     // lampa portlashi: elektr chirsillashi + qisqa "pop"
+    if (!this.ready) return;
+    const ctx = this.ctx, t = ctx.currentTime, n = this._noise(0.4, t), hp = ctx.createBiquadFilter(), g = ctx.createGain();
+    hp.type = 'highpass'; hp.frequency.value = 2500; g.gain.setValueAtTime(0.5, t); g.gain.setValueAtTime(0.0001, t + 0.03); g.gain.setValueAtTime(0.35, t + 0.06); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.38);
+    n.connect(hp); hp.connect(g); g.connect(this.sfx); g.connect(this.reverb);
+    const o = ctx.createOscillator(), og = ctx.createGain(); o.type = 'sawtooth'; o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.25); og.gain.setValueAtTime(0.25, t); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.3); o.connect(og); og.connect(this.sfx); o.start(t); o.stop(t + 0.35);
+  }
+  casing(vol = 0.5) {         // gilza yerga tushib jiringlaydi
+    if (!this.ready) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    for (let k = 0; k < 3; k++) { const o = ctx.createOscillator(), g = ctx.createGain(), f = 3200 + Math.random() * 1400; o.type = 'triangle'; o.frequency.value = f; g.gain.setValueAtTime(0.0001, t + k * 0.09); g.gain.exponentialRampToValueAtTime(0.1 * vol / (k + 1), t + k * 0.09 + 0.003); g.gain.exponentialRampToValueAtTime(0.0001, t + k * 0.09 + 0.12); o.connect(g); g.connect(this.sfx); g.connect(this.reverb); o.start(t + k * 0.09); o.stop(t + k * 0.09 + 0.15); }
+  }
+  gasp(pitch = 1, vol = 0.6) { // cho'chib nafas olish: filtrlangan shovqin, tez ko'tariladigan
+    if (!this.ready) return;
+    const ctx = this.ctx, t = ctx.currentTime, n = this._noise(0.5, t), bp = ctx.createBiquadFilter(), g = ctx.createGain();
+    bp.type = 'bandpass'; bp.frequency.setValueAtTime(900 * pitch, t); bp.frequency.exponentialRampToValueAtTime(2200 * pitch, t + 0.28); bp.Q.value = 1.4;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.22 * vol, t + 0.16); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.42);
+    n.connect(bp); bp.connect(g); g.connect(this.sfx);
+  }
+  async _loadBlood() {        // kadr (badroom) musiqasi
+    try { const r = await fetch(FILES + 'blood.mp3'); this.blood = await this.ctx.decodeAudioData(await r.arrayBuffer()); this.bloodEnv = envelopeFrom(this.blood); } catch (e) { /* fayl yo'q — musiqasiz */ }
+  }
+  // kadr musiqasi: xona musiqalari va fon pasayadi. Qaytaradi { startAt, env } yoki null
+  playCine() {
+    if (!this.ready) return null;
+    const ctx = this.ctx, t = ctx.currentTime;
+    this.music.gain.cancelScheduledValues(t); this.music.gain.setTargetAtTime(0, t, 0.15);
+    if (this._amb) this._amb.g.gain.setTargetAtTime(0.06, t, 0.2);
+    const h = { startAt: t + 0.05, env: this.bloodEnv || null, src: null, g: null };
+    if (this.blood) {
+      const src = ctx.createBufferSource(); src.buffer = this.blood;
+      const g = ctx.createGain(); g.gain.value = 1.0; src.connect(g); g.connect(this.master);
+      const rv = ctx.createGain(); rv.gain.value = 0.18; g.connect(rv); rv.connect(this.reverb);
+      src.start(h.startAt); h.src = src; h.g = g;
+    }
+    return h;
+  }
+  stopCine(h) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    if (h && h.g) { try { h.g.gain.setTargetAtTime(0, t, 0.08); h.src.stop(t + 0.4); } catch (e) {} }
+    this.music.gain.cancelScheduledValues(t); this.music.gain.setTargetAtTime(1, t, 0.6);
+    if (this._amb) this._amb.g.gain.setTargetAtTime(0.5, t, 0.8);
+  }
+  async _loadBat() {          // shkaf ochilganda ko'rshapalaklar ovozi: barcha baqiriqlar ichida eng baland va qisqasi (2 s)
+    try { const r = await fetch(FILES + 'bat.mp3'); this.bat = await this.ctx.decodeAudioData(await r.arrayBuffer()); } catch (e) { /* fayl yo'q — sintez */ }
+  }
+  bats(x = null, z = null) {
+    if (!this.ready) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    if (this.bat) {
+      const o = this._out(x, z, { reverb: 0.5, ref: 7, roll: 0.8 }), src = ctx.createBufferSource(); src.buffer = this.bat;
+      const g = ctx.createGain(); g.gain.value = 2.2; src.connect(g); g.connect(o.node); src.start(t); this._track(src, src.buffer.duration);
+    } else this.scream({ x, z, pitch: 1.3, vol: 1.3 });
+    // qanotlar shovqini
+    const o2 = this._out(x, z, { reverb: 0.3, ref: 4 });
+    for (let i = 0; i < 9; i++) {
+      const n = this._noise(0.1, t + i * 0.07), bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 900 + Math.random() * 900; bp.Q.value = 1.2;
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t + i * 0.07); g.gain.exponentialRampToValueAtTime(0.5, t + i * 0.07 + 0.02); g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.07 + 0.11);
+      n.connect(bp); bp.connect(g); g.connect(o2.node);
+    }
+  }
+  bite(x = null, z = null) {          // tishlash: jag' chaqnashi + past zarba + nam shovqin
+    if (!this.ready) return;
+    const ctx = this.ctx, t = ctx.currentTime, o = this._out(x, z, { reverb: 0.3, ref: 4 });
+    const g = ctx.createGain(); g.gain.setValueAtTime(1.3, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.9); g.connect(o.node);
+    const n = this._noise(0.5, t), lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.setValueAtTime(2500, t); lp.frequency.exponentialRampToValueAtTime(200, t + 0.5); n.connect(lp); lp.connect(g);
+    for (const d of [0, 0.12, 0.26]) { const k = ctx.createOscillator(); k.type = 'square'; k.frequency.setValueAtTime(220, t + d); k.frequency.exponentialRampToValueAtTime(45, t + d + 0.1); const kg = ctx.createGain(); kg.gain.setValueAtTime(0.0001, t + d); kg.gain.exponentialRampToValueAtTime(0.6, t + d + 0.01); kg.gain.exponentialRampToValueAtTime(0.001, t + d + 0.15); k.connect(kg); kg.connect(g); k.start(t + d); k.stop(t + d + 0.2); }
+  }
+  hiss(x = null, z = null, vol = 1) {       // ilon xirillashi
+    if (!this.ready) return;
+    const ctx = this.ctx, t = ctx.currentTime, o = this._out(x, z, { reverb: 0.4, ref: 4 });
+    const n = this._noise(1.1, t), hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 3800; const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 6500; bp.Q.value = 0.8;
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.9 * vol, t + 0.12); g.gain.setValueAtTime(0.9 * vol, t + 0.6); g.gain.exponentialRampToValueAtTime(0.001, t + 1.1);
+    n.connect(hp); hp.connect(bp); bp.connect(g); g.connect(o.node);
+  }
+  scrape(x = null, z = null) {              // sudralish: yerga ishqalanish
+    if (!this.ready) return;
+    const ctx = this.ctx, t = ctx.currentTime, o = this._out(x, z, { ref: 3 });
+    const n = this._noise(0.4, t), bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 350 + Math.random() * 250; bp.Q.value = 0.9;
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.8, t + 0.06); g.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+    n.connect(bp); bp.connect(g); g.connect(o.node);
+  }
+  swing(x = null, z = null) {         // bolg'a shiviri
+    if (!this.ready) return;
+    const ctx = this.ctx, t = ctx.currentTime, o = this._out(x, z, { ref: 3 });
+    const n = this._noise(0.3, t), bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 1.5; bp.frequency.setValueAtTime(300, t); bp.frequency.exponentialRampToValueAtTime(1800, t + 0.18);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.7, t + 0.1); g.gain.exponentialRampToValueAtTime(0.001, t + 0.28); n.connect(bp); bp.connect(g); g.connect(o.node);
+  }
+  shot(x = null, z = null) {          // to'pponcha o'qi
+    if (!this.ready) return;
+    const ctx = this.ctx, t = ctx.currentTime, o = this._out(x, z, { reverb: 0.6, ref: 8, roll: 0.9 });
+    const g = ctx.createGain(); g.gain.setValueAtTime(1.6, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.5); g.connect(o.node);
+    const n = this._noise(0.4, t), hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 500; n.connect(hp); hp.connect(g);
+    const k = ctx.createOscillator(); k.type = 'sine'; k.frequency.setValueAtTime(180, t); k.frequency.exponentialRampToValueAtTime(40, t + 0.15); const kg = ctx.createGain(); kg.gain.value = 1.2; k.connect(kg); kg.connect(g); k.start(t); k.stop(t + 0.3);
   }
   _makeReverb() {
     const ctx = this.ctx, len = Math.floor(ctx.sampleRate * 2.2), buf = ctx.createBuffer(2, len, ctx.sampleRate);

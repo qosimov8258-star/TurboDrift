@@ -67,6 +67,7 @@ function runGame(i) {
   for (let k = 0; k < 10; k++) { frame += 5; for (const id of ids) { const q = queues.get(id), sim = sims.get(id); while (q.length) sim.handleNet(q.shift().m); } }
   totalT += t;
   const all = [...sims.values()];
+  if (!all.every(s => s.over) && process.env.DBG) for (const id of ids) { const m = sims.get(id).me, b = bots.get(id); console.log('  ', id, m.role, 'alive', m.alive, 'esc', m.escaped, m.x.toFixed(2), m.z.toFixed(2), 'goal', JSON.stringify(b.goal), 'path', b.path ? b.path.length : null, 'frozen', m.frozen, 'bitten', m.bitten); }
   if (!all.every(s => s.over)) { timeouts++; fail(`${tag} o'yin tugamadi (t=${t.toFixed(0)}s) keys=${all[0].keysFound.size}/${all[0].need} alive=${all[0].aliveSurvivors().length}`); return; }
   const w = all[0].over.win;
   if (!all.every(s => s.over.win === w)) fail(`${tag} natija farq qiladi`);
@@ -83,7 +84,7 @@ function runGame(i) {
   if (w && ref.keysFound.size < ref.need) fail(`${tag} kalitsiz g'alaba`);
 }
 const t0 = Date.now();
-for (let i = 0; i < N; i++) runGame(i);
+for (let i = process.env.FROM ? +process.env.FROM : 0; i < N; i++) runGame(i);
 console.log('hodisalar qamrovi:', JSON.stringify(cover));
 console.log(`\n${N} o'yin: g'alaba ${wins}, mag'lubiyat ${losses}, tugamagan ${timeouts}, xatolar ${fails}, o'rtacha o'yin vaqti ${(totalT / N).toFixed(0)}s, haqiqiy vaqt ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 process.exit(fails ? 1 : 0);

@@ -1,0 +1,21 @@
+<!doctype html><html><body style="margin:0;background:#000"><canvas id=c width=1280 height=720></canvas><div id=hzFade style="position:fixed;inset:0;background:#000;opacity:0;pointer-events:none"></div>
+<script type="importmap">{ "imports": { "three": "/three/build/three.module.js", "three/addons/": "/three/examples/jsm/" } }</script>
+<script type="module">
+import * as THREE from 'three';
+import { Cine } from '/horror/js/cine.js';
+import { CHARS, GHOST_DEF } from '/horror/js/actors.js';
+const r = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true });
+r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.15; r.shadowMap.enabled = true;
+const scene = new THREE.Scene(); scene.fog = new THREE.FogExp2(0x040405, 0.02); scene.background = new THREE.Color(0x020203);
+const hemi = new THREE.HemisphereLight(0x3a4560, 0x140c0c, 1); scene.add(hemi);
+const cam = new THREE.PerspectiveCamera(54, 16 / 9, 0.05, 90);
+const c = await Cine.create(scene);
+const q = new URLSearchParams(location.search);
+await c.begin({ aDef: CHARS[+(q.get('a') || 0)], bDef: CHARS[+(q.get('b') || 1)], audio: null }); r.compile(scene, cam);
+const game = { scene, hemi };
+let last = -1;
+window.__shot = (t) => { c.forceT = t; c.update(Math.max(0.016, t - last), cam, game); last = t; c.render(r, scene, cam, 0.016); return { hA: c.actors[0].height, hB: c.actors[1].height, A: c.pg[0].position.toArray().map(x=>+x.toFixed(2)), yawA: +c.pg[0].rotation.y.toFixed(2), B: c.pg[1].position.toArray().map(x=>+x.toFixed(2)), cam: cam.position.toArray().map(x=>+(x).toFixed(2)) }; };
+window.__nan = () => { const bad = []; scene.traverse(o => { const e = o.matrixWorld.elements; if (e.some(x => !Number.isFinite(x))) bad.push(o.type + ':' + (o.name || o.constructor.name)); if (o.isLight && !Number.isFinite(o.intensity)) bad.push('light intensity ' + o.type); }); return { bad: bad.slice(0, 12), cam: cam.position.toArray(), fov: cam.fov }; };
+window.__ext = (t, x,y,z, tx,ty,tz) => { c.forceT = t; c.update(0.016, cam, game); cam.position.set(520+x, y, 520+z); cam.lookAt(520+tx, ty, 520+tz); cam.fov = 50; cam.updateProjectionMatrix(); r.render(scene, cam); };
+window.__done = 1;
+</script></body></html>

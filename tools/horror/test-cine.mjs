@@ -1,0 +1,27 @@
+// Kadr (badroom) haqiqiy o'yinda: birinchi eshik ochilganda boshlanadi, 27 s davom etadi, keyin o'yin davom etadi.
+import { chromium } from 'playwright';
+import { createStatic, attachGameServer } from '../../server.js';
+const PORT = 3304; const srv = createStatic(PORT); attachGameServer(srv); await new Promise(r => srv.listen(PORT, r));
+const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required', '--mute-audio'] });
+const errs = []; let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log('FAIL', m); } else console.log('ok  ', m); };
+const p = await (await b.newContext({ viewport: { width: 960, height: 540 } })).newPage();
+p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); if (m.type() === 'warning' && !/GL Driver/.test(m.text())) console.log('[warn]', m.text().slice(0, 300)); });
+await p.goto(`http://localhost:${PORT}/horror?nopause`); await p.waitForSelector('#hzSplash.on', { timeout: 60000 }); await p.waitForTimeout(3300);
+await p.click('#hzStartBtn'); await p.waitForSelector('#hzMenu.on', { timeout: 30000 });
+await p.fill('#hzName', 'Test'); await p.click('#hzSolo'); await p.click('#hzLevelGrid .lcard:nth-child(' + (process.env.LV || 1) + ')'); await p.click('#hzLevelGo');
+await p.waitForFunction('window.__hz && window.__hz.sim && window.__hz.frameCount>8', null, { timeout: 90000 });
+ok(await p.evaluate(() => !!__hz.cine), 'badroom yuklandi');
+ok(await p.evaluate(() => !!__hz.sim.cineDone), 'o\'yin boshlanishi bilan kadr boshlandi');
+await p.waitForTimeout(1500);
+ok(await p.evaluate(() => !!__hz.sim.cineDone && (__hz.cine.active ? document.body.classList.contains('cine') : true)), 'kadr faol bo\'lganda HUD yashirinadi');
+const pos0 = await p.evaluate(() => [__hz.sim.me.x, __hz.sim.me.z]);
+await p.screenshot({ path: process.argv[2] + '/game_cine_1.png' });
+await p.waitForTimeout(17500); await p.screenshot({ path: process.argv[2] + '/game_cine_2.png' });
+await p.waitForFunction('!__hz.sim.cine', null, { timeout: 30000 }); ok(true, 'kadr tugadi');
+await p.waitForTimeout(1500);
+ok(await p.evaluate(() => !__hz.cine.active && !document.body.classList.contains('cine')), 'oddiy ko\'rinishga qaytdi');
+ok(await p.evaluate(() => __hz.camera.fov > 60), 'kamera tiklandi');
+await p.screenshot({ path: process.argv[2] + '/game_cine_3.png' });
+await p.waitForTimeout(1500); ok(await p.evaluate(() => !__hz.sim.cine), 'kadr faqat bir marta');
+ok(errs.length === 0, 'xatolar yo\'q ' + JSON.stringify(errs.slice(0, 3)));
+await b.close(); srv.close(); console.log(fails ? 'FAILS ' + fails : 'hammasi yaxshi'); process.exit(fails ? 1 : 0);

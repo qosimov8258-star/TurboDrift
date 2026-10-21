@@ -22,7 +22,7 @@ export class Input {
     addEventListener('mousemove', e => { if (this.locked) { this.dx += e.movementX || 0; this.dy += e.movementY || 0; } });
     document.addEventListener('pointerlockchange', () => { this.locked = document.pointerLockElement === canvas; if (this.onLock) this.onLock(this.locked); });
     document.addEventListener('pointerlockerror', () => { this.locked = false; if (this.onLock) this.onLock(false); });
-    canvas.addEventListener('mousedown', e => { if (this.enabled && !this.locked && !this.touch.on) this.lock(); if (e.button === 0) this.keys.add('Mouse0'); if (e.button === 2) this.keys.add('Mouse2'); });
+    canvas.addEventListener('mousedown', e => { if (this.enabled && !this.locked && !this.touch.on) this.lock(); if (e.button === 0) { this.keys.add('Mouse0'); if (this.enabled && this.locked) this.pressed.add('Mouse0'); } if (e.button === 2) this.keys.add('Mouse2'); });
     addEventListener('mouseup', e => { if (e.button === 0) this.keys.delete('Mouse0'); if (e.button === 2) this.keys.delete('Mouse2'); });
     canvas.addEventListener('contextmenu', e => e.preventDefault());
   }

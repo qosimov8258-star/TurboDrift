@@ -1,0 +1,24 @@
+<!doctype html><html><body style="margin:0;background:#222"><canvas id=c width=1600 height=420></canvas>
+<script type="importmap">{ "imports": { "three": "/three/build/three.module.js", "three/addons/": "/three/examples/jsm/" } }</script>
+<script type="module">
+import * as THREE from 'three';
+import { CHARS, createActor } from '/horror/js/actors.js';
+import { poseRig, ikArm } from '/horror/js/rig.js';
+const q = new URLSearchParams(location.search), d = CHARS[+(q.get('c') || 0)], yaw = (+q.get('yaw') || 0) * Math.PI / 180;
+const r = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true });
+const s = new THREE.Scene(); s.background = new THREE.Color(0x303038);
+s.add(new THREE.HemisphereLight(0xffffff, 0x444455, 2)); const dl = new THREE.DirectionalLight(0xffffff, 2); dl.position.set(2, 4, 5); s.add(dl);
+const poses = [
+  {}, { lLeg: .6, lKnee: .2, rLeg: -.5, rKnee: .8, lArm: -.5, rArm: .9, rElbow: 1.2 },
+  { lLeg: -.5, lKnee: .9, rLeg: .6, rKnee: .1, lArm: .5, lElbow: .3, rArm: 1.4, rElbow: .3 },
+  { lArm: 1.5, rArm: 1.5, lElbow: .2, rElbow: .2 }, { lArm: 2.5, rArm: 2.5, lElbow: 2, rElbow: 2, lLeg: .3, rLeg: .3, lKnee: .9, rKnee: .9, head: .4 },
+];
+const out = [];
+for (const [i, p] of poses.entries()) {
+  const a = await createActor(d, { rig: true }); if (!i) out.push(d.id + ' rig=' + !!a.rig + ' side=' + JSON.stringify(a.rig && a.rig.side));
+  const g = new THREE.Group(); g.add(a.root); g.position.set((i - 2) * 0.95, 0, 0); g.rotation.y = yaw; s.add(g); g.updateMatrixWorld(true);
+  if (a.rig) { poseRig(a.rig, q.get('ik') ? {} : p); if (q.get('ik')) { const gx = (i - 2) * 0.95, T = [[0, 1.0, 2], [-0.6, 1.5, 1.5], [0.2, 0.2, 1.2], [1.4, 0.9, 0.5], [0.2, 1.0, 0.5]][i]; ikArm(a.rig, 'r', new THREE.Vector3(gx + T[0], T[1], T[2]), 1); ikArm(a.rig, 'l', new THREE.Vector3(gx + T[0] - 0.05, T[1] - 0.05, T[2]), 1); } }
+}
+const cam = new THREE.PerspectiveCamera(30, 1600 / 420, 0.1, 100); cam.position.set(0, 0.8, 4.1); cam.lookAt(0, 0.7, 0);
+r.render(s, cam); window.__done = out;
+</script></body></html>

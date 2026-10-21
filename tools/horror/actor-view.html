@@ -1,0 +1,36 @@
+<!doctype html><html><body style="margin:0;background:#222"><canvas id=c width=1600 height=500></canvas>
+<script type="importmap">{ "imports": { "three": "/three/build/three.module.js", "three/addons/": "/three/examples/jsm/" } }</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import * as SU from 'three/addons/libs/../utils/SkeletonUtils.js';
+const q = new URLSearchParams(location.search), f = q.get('f') || 'killer';
+const r = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true });
+const s = new THREE.Scene(); s.background = new THREE.Color(0x303038);
+s.add(new THREE.HemisphereLight(0xffffff, 0x444455, 1.8)); const dl = new THREE.DirectionalLight(0xffffff, 2); dl.position.set(2, 4, 5); s.add(dl);
+const l = new GLTFLoader(); l.setMeshoptDecoder(MeshoptDecoder);
+const g = await l.loadAsync('/horror/models/' + f + '.glb');
+const times = (q.get('t') || '0,1,2,3,4,5').split(',').map(Number), out = { clips: g.animations.map(a => [a.name, +a.duration.toFixed(2)]), bones: [] };
+g.scene.traverse(o => { if (o.isBone) out.bones.push(o.name); if (o.isMesh) out.bones.push('MESH:' + o.name + ':' + (o.geometry.attributes.position.count) + ':' + (o.isSkinnedMesh ? 'sk' : '')); });
+const cam = new THREE.PerspectiveCamera(30, 1600 / 500, 0.1, 100);
+const box0 = new THREE.Box3().setFromObject(g.scene); out.box = box0.min.toArray().concat(box0.max.toArray()).map(x => +x.toFixed(2));
+let i = 0; const H = box0.max.y - box0.min.y;
+for (const t of times) {
+  const a = SU.clone(g.scene); const w = new THREE.Group(); w.add(a); s.add(w);
+  if (g.animations.length) { const m = new THREE.AnimationMixer(a); m.clipAction(g.animations[0]).play(); m.setTime(t); }
+  w.position.x = (i++ - (times.length - 1) / 2) * (+q.get('sp') || 2.2); w.updateMatrixWorld(true);
+}
+const bb = new THREE.Box3(); s.traverse(o => { if (o.isSkinnedMesh) { o.skeleton.update(); } }); s.updateMatrixWorld(true);
+const ps = []; s.traverse(o => { if (o.isSkinnedMesh) { const b2 = new THREE.Box3().setFromObject(o, true); bb.union(b2); } });
+out.pbox = bb.min.toArray().concat(bb.max.toArray()).map(x => +x.toFixed(2));
+const c = bb.getCenter(new THREE.Vector3()), sz2 = bb.getSize(new THREE.Vector3()), R = Math.max(sz2.x, sz2.y, 1) * 1.1;
+const v = q.get('v') || 'front';
+if (v === 'side') { cam.position.set(c.x + R * 3.4 + times.length, c.y + R * 0.2, c.z); cam.lookAt(c); } else { cam.position.set(c.x, c.y + R * 0.2, c.z + R * 3.4 + times.length); cam.lookAt(c); }
+if (q.get('cam')) { const [x,y,z,tx,ty,tz] = q.get('cam').split(',').map(Number); cam.position.set(x,y,z); cam.lookAt(tx,ty,tz); }
+cam.far = 500; cam.updateProjectionMatrix();
+r.render(s, cam);
+if (g.animations.length) { const a = SU.clone(g.scene); s.add(a); const m = new THREE.AnimationMixer(a); m.clipAction(g.animations[0]).play(); const nm = (q.get('b') || 'C_Hip_J_00,C_Head_J_023').split(','); out.trace = [];
+  for (let t = 0; t <= 6.25; t += 0.5) { m.setTime(t); a.updateMatrixWorld(true); const row = [t]; for (const n of nm) { let b; a.traverse(o => { if (o.name === n) b = o; }); row.push(b ? b.getWorldPosition(new THREE.Vector3()).toArray().map(x => +x.toFixed(2)) : null); } out.trace.push(row); } }
+window.__done = out;
+</script></body></html>

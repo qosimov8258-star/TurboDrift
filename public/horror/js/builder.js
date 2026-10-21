@@ -240,3 +240,36 @@ export function makeThrowable(type) {
   }
   return g;
 }
+
+// qurollar: yerda yotgan, qo'lda va boshqa o'yinchida ko'rinadigan model (uzunligi +z bo'ylab, tutqich pastda)
+export function makeWeapon(type) {
+  const g = new THREE.Group();
+  const add = (geo, mat, x = 0, y = 0, z = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); g.add(m); return m; };
+  const wood = tmat(0x6b4426, { emissive: 0x1a0e05 }), steel = tmat(0x8a9096, { metalness: 0.8, roughness: 0.35, emissive: 0x15171a }), dark = tmat(0x1d1f22, { metalness: 0.6, roughness: 0.4, emissive: 0x0a0a0b });
+  if (type === 'hammer') {
+    add(new THREE.CylinderGeometry(0.025, 0.03, 0.42, 8), wood).rotation.x = Math.PI / 2;
+    add(new THREE.BoxGeometry(0.07, 0.07, 0.16), steel, 0, 0, 0.22);
+    add(new THREE.BoxGeometry(0.09, 0.04, 0.05), steel, 0, 0, 0.3);
+  } else {
+    add(new THREE.BoxGeometry(0.05, 0.075, 0.26), dark, 0, 0.04, 0.08);
+    add(new THREE.BoxGeometry(0.045, 0.14, 0.07), wood, 0, -0.05, -0.03).rotation.x = -0.25;
+    add(new THREE.CylinderGeometry(0.015, 0.015, 0.1, 6), steel, 0, 0.045, 0.24).rotation.x = Math.PI / 2;
+  }
+  return g;
+}
+
+// ko'rshapalak: tana + ikki qanot (qanotlar group.userData.wings da, g'ildiratib chaqnaydi)
+const BAT_BODY = new THREE.SphereGeometry(0.06, 6, 5), BAT_WING = (() => { const sh = new THREE.Shape(); sh.moveTo(0, 0.04); sh.lineTo(0.34, 0.1); sh.lineTo(0.26, -0.02); sh.lineTo(0.17, 0.03); sh.lineTo(0.1, -0.06); sh.lineTo(0, -0.05); return new THREE.ShapeGeometry(sh); })();
+const BAT_MAT = new THREE.MeshStandardMaterial({ color: 0x241b22, emissive: 0x2a1a24, roughness: 0.9, side: THREE.DoubleSide });
+const BAT_EYE = new THREE.MeshBasicMaterial({ color: 0xff2a2a });
+export function makeBat() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(BAT_BODY, BAT_MAT); body.scale.set(1, 0.8, 1.5); g.add(body);
+  for (const sx of [-0.03, 0.03]) { const e = new THREE.Mesh(BAT_BODY, BAT_EYE); e.scale.setScalar(0.18); e.position.set(sx, 0.02, 0.085); g.add(e); }
+  const wl = new THREE.Group(), wr = new THREE.Group();
+  const l = new THREE.Mesh(BAT_WING, BAT_MAT); l.rotation.x = -Math.PI / 2; wl.add(l);
+  const r = new THREE.Mesh(BAT_WING, BAT_MAT); r.rotation.x = -Math.PI / 2; r.scale.x = -1; wr.add(r);
+  g.add(wl, wr); g.userData.wings = [wl, wr];
+  g.scale.setScalar(1.5);
+  return g;
+}
